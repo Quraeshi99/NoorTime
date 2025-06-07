@@ -2,27 +2,26 @@
 module.exports = {
   content: [
     "./project/templates/**/*.html", 
-    "./project/static/js/**/*.js",    
+    "./project/static/js/**/*.js",
+    "./project/static/css/src/**/*.css",   // CSS फाइलें भी यहाँ add की हैं
   ],
   theme: {
     extend: {
       colors: {
-        'brand-dark': '#1A202C',      
-        'brand-panel': '#2D3748',     
-        'brand-box': '#4A5568',       
-        'brand-red': '#E53E3E',       
-        'brand-green': '#48BB78',     
-        'brand-blue': '#4299E1',      
-        'brand-yellow': '#F6E05E',    
-        'brand-orange': '#ED8936',    
-        'brand-purple': '#9F7AEA',    
-        'brand-light-gray': '#F7FAFC',
-        'brand-medium-gray': '#A0AEC0',
-        'brand-border': '#4A5568',    
+        background: 'var(--color-background)',
+        surface: 'var(--color-surface)',
+        primary: 'var(--color-primary)',
+        secondary: 'var(--color-secondary)',
+        'on-primary': 'var(--color-on-primary)',
+        'on-surface': 'var(--color-on-surface)',
+        'on-surface-variant': 'var(--color-on-surface-variant)',
+        outline: 'var(--color-outline)',
+        error: 'var(--color-error)',
+        // बाकी brand- colors को हटा सकते हो या रख सकते हो अगर ज़रूरत हो तो
       },
       fontFamily: {
-        sans: ['Inter', 'Roboto', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Helvetica', 'Arial', 'sans-serif'],
-        digital: ['Orbitron', 'Share Tech Mono', '"DS-Digital"', 'monospace'], 
+        sans: ['var(--font-family-sans)'],
+        digital: ['var(--font-family-digital)'],
       },
     },
   },
