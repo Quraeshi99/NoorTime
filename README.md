@@ -86,6 +86,62 @@ PrayerTimesGlobal/ (आपके Repl का नाम)
 ├── service-worker.js (PWA सर्विस वर्कर - static या रूट में हो सकता है)
 ├── start_dev.sh (Replit पर डेवलपमेंट सर्वर चलाने के लिए स्क्रिप्ट)
 └── README.md (यह फ़ाइल)
+## नया अपडेट करने के बाद का फोल्डर का स्ट्रक्चर कुछ इस प्रकार है हो सकता है इसमें पिछले वाले से कोई एक फाइल मिसिंग ही तो कोर्स चेक अवश्य कर ले
+# फोल्डर स्ट्रक्चर देखने के लिए पहले इसको ही प्रफेंस दे 
+
+├── README.md
+├── config.py
+├── manifest.json
+├── package.json
+├── postcss.config.js
+├── project
+│   ├── __init__.py
+│   ├── extensions.py
+│   ├── forms.py
+│   ├── models.py
+│   ├── routes
+│   │   ├── __init__.py
+│   │   ├── api_routes.py
+│   │   ├── auth_routes.py
+│   │   ├── main_routes.py
+│   │   └── test_mail.py
+│   ├── services
+│   │   ├── __init__.py
+│   │   ├── api_adapters
+│   │   │   ├── __init__.py
+│   │   │   ├── aladhan_adapter.py
+│   │   │   └── base_adapter.py
+│   │   └── prayer_time_service.py
+│   ├── static
+│   │   ├── css
+│   │   │   ├── dist
+│   │   │   └── src
+│   │   │       └── input.css
+│   │   ├── fonts
+│   │   │   └── DS-DIGI.TTF
+│   │   ├── js
+│   │   │   ├── main_script.js
+│   │   │   └── settings_script.js
+│   │   └── sounds
+│   │       └── beep.mp3
+│   ├── templates
+│   │   ├── base_layout.html
+│   │   ├── index.html
+│   │   ├── login.html
+│   │   ├── register.html
+│   │   └── settings.html
+│   └── utils
+│       ├── email_utils.py
+│       └── mail_config.py
+├── requirements.txt
+├── run.py
+├── scripts
+│   └── env_cleaner_validator.py
+├── service-worker.js
+├── start_dev.sh
+└── tailwind.config.js
+
+**15 directories, 37 files
 
 
 
