@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- CSRF Token (महत्वपूर्ण अगर हम Flask-WTF फॉर्म्स या AJAX POST का उपयोग करते हैं जिन्हें CSRF सुरक्षा चाहिए) -->
+    <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+
+    <title>{% block title %}Prayer Times{% endblock title %} - Global</title>
+    
+    <!-- Tailwind CSS (बिल्ड होने के बाद static/css/dist/style.css में होगी) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dist/style.css') }}">
+    
+    <!-- Google Fonts (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <!-- Web App Manifest (PWA) -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}"> <!-- पाथ को सही करें अगर manifest.json रूट में है -->
+    <!-- <link rel="manifest" href="/manifest.json">  यदि manifest.json रूट में है -->
+
+
+    <!-- Theme Color for browser UI -->
+    <meta name="theme-color" content="#1A202C"> <!-- हमारी brand-dark से मेल खाता हुआ -->
+
+    <!-- iOS specific PWA tags (वैकल्पिक) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Prayer Times">
+    <!-- <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/icons/apple-touch-icon.png') }}"> -->
+
+    <style>
+        /* Prevent FOUC (Flash of Unstyled Content) & ensure smooth font loading */
+        html {
+            scroll-behavior: smooth;
+        }
+        body { 
+            font-family: 'Inter', sans-serif; /* डिफ़ॉल्ट फॉन्ट */
+            opacity: 0; /* Initially hidden */
+            transition: opacity 0.3s ease-in-out;
+            -webkit-font-smoothing: antialiased; /* macOS/iOS के लिए बेहतर फॉन्ट रेंडरिंग */
+            -moz-osx-font-smoothing: grayscale; /* Firefox के लिए */
+        }
+        body.fonts-loaded {
+            opacity: 1; /* Visible once fonts are ready */
+        }
+        /* डिजिटल फॉन्ट क्लास */
+        .font-digital-display {
+            font-family: 'Orbitron', 'Share Tech Mono', 'DS-Digital', monospace; /* फॉन्ट स्टैक */
+        }
+        /* अतिरिक्त स्टाइल जो सभी पेजों पर लागू हों */
+    </style>
+    {% block head_extra %}{% endblock head_extra %} <!-- अन्य पेजों में अतिरिक्त <head> कंटेंट के लिए -->
+</head>
+<body class="bg-brand-dark text-brand-light-gray flex flex-col min-h-screen">
+
+    <!-- मुख्य नेविगेशन बार (सभी पेजों पर कॉमन हो सकता है) -->
+    <nav class="bg-brand-panel shadow-md sticky top-0 z-50 print:hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <a href="{{ url_for('main.index') }}" class="flex items-center text-xl sm:text-2xl font-bold text-brand-yellow hover:opacity-80 transition-opacity">
+                        <!-- SVG आइकन (उदाहरण - आप अपना लोगो या आइकन यहाँ रख सकते हैं) -->
+                        <svg class="h-8 w-8 mr-2 text-brand-green" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Prayer Times
+                    </a>
+                </div>
+                <div class="flex items-center space-x-3 sm:space-x-4 text-sm">
+                    {% if current_user.is_authenticated %}
+                        <span class="text-brand-light-gray hidden sm:inline">Welcome, <strong class="text-brand-blue">{{ current_user.name or current_user.email.split('@')[0] }}</strong>!</span>
+                        <a href="{{ url_for('main.settings') }}" class="text-brand-blue hover:text-brand-yellow transition-colors px-2 py-1 rounded-md hover:bg-brand-box">
+                            <svg class="w-5 h-5 inline sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            <span class="hidden sm:inline">Settings</span>
+                        </a>
+                        <a href="{{ url_for('auth.logout') }}" class="admin-button-danger text-xs px-3 py-1.5 sm:px-4 sm:py-2">Logout</a>
+                    {% else %}
+                        <a href="{{ url_for('auth.login') }}" class="text-brand-blue hover:text-brand-yellow transition-colors">Login</a>
+                        <a href="{{ url_for('auth.register') }}" class="admin-button text-xs px-3 py-1.5 sm:px-4 sm:py-2">Register</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- मुख्य कंटेंट ब्लॉक जिसे अन्य टेम्पलेट्स भरेंगे -->
+    <main class="flex-grow container mx-auto px-2 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8 print:p-0">
+        {% block content %}{% endblock content %}
+    </main>
+
+    <!-- फुटर (सभी पेजों पर कॉमन हो सकता है) -->
+    <footer class="bg-brand-panel text-center py-4 text-xs text-brand-medium-gray print:hidden">
+        Prayer Times Global © <span id="currentYearFooter"></span>. 
+        <!-- You can add more footer info or links here -->
+        <script>document.getElementById('currentYearFooter').textContent = new Date().getFullYear();</script>
+    </footer>
+
+    <!-- मुख्य JavaScript फाइलें (पेज के अंत में लोड करना बेहतर प्रदर्शन के लिए) -->
+    <!-- jQuery (यदि आवश्यक हो - अभी हम इसका उपयोग नहीं कर रहे हैं) -->
+    <!-- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> -->
+    
+    <!-- Font loading detection script -->
+    <script>
+        function InitAppFonts() {
+            const applyLoadedClass = () => {
+                if (!document.body.classList.contains('fonts-loaded')) {
+                    document.body.classList.add('fonts-loaded');
+                    // console.log("Fonts ready state confirmed, applying .fonts-loaded");
+                }
+            };
+
+            if (document.fonts) { // Check for FontFaceSet API support
+                Promise.all([
+                    document.fonts.load("1em Inter"), // Load a weight/style of Inter
+                    document.fonts.load("1em Orbitron")  // Load a weight/style of Orbitron
+                    // Add other critical fonts if necessary
+                ]).then(applyLoadedClass).catch(error => {
+                    console.warn("Specific font loading error or timeout, showing text anyway.", error);
+                    applyLoadedClass(); // Fallback
+                });
+                
+                // General ready as an additional fallback
+                document.fonts.ready.then(applyLoadedClass);
+
+                // Timeout fallback in case 'ready' or specific loads don't resolve
+                setTimeout(applyLoadedClass, 2000); // 2 second timeout
+            } else {
+                // Fallback for older browsers that don't support document.fonts
+                applyLoadedClass();
+            }
+        }
+        InitAppFonts();
+    </script>
+
+    <!-- पेज-विशिष्ट JavaScript के लिए ब्लॉक -->
+    {% block scripts %}{% endblock scripts %}
+</body>
+</html>

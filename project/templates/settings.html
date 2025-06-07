@@ -1,0 +1,216 @@
+{% extends "base_layout.html" %}
+
+{% block title %}My Settings{% endblock title %}
+
+{% block head_extra %}
+<style>
+    /* Tabs for settings sections */
+    .tab-button { @apply px-4 py-2 text-sm font-medium rounded-t-md border-b-2 border-transparent hover:text-primary hover:border-primary focus:outline-none; }
+    .tab-button.active { @apply text-primary border-primary; }
+    .tab-content-panel { @apply p-4 sm:p-6 bg-surface rounded-b-md rounded-tr-md shadow-lg border border-t-0 border-outline; }
+    /* CSS वेरिएबल्स (रंग, फॉन्ट आदि) input.css में :root से आएंगे */
+</style>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+{% endblock head_extra %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="text-center mb-6 sm:mb-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-brand-yellow">My Prayer Settings</h1>
+        <p class="text-sm text-brand-medium-gray mt-1">Customize your prayer times and preferences</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 max-w-3xl mx-auto">
+            {% for category, message in messages %}
+                <div class="p-3 rounded-md text-sm text-white
+                    {% if category == 'danger' %} bg-error 
+                    {% elif category == 'success' %} bg-green-500 {# Use a generic green or define --color-success #}
+                    {% elif category == 'info' %} bg-blue-500   {# Use a generic blue or define --color-info #}
+                    {% elif category == 'warning' %} bg-yellow-500 text-background {# Use a generic yellow #}
+                    {% else %} bg-brand-box text-on-surface-variant 
+                    {% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Tabs Navigation -->
+    <div class="mb-0 border-b border-outline print:hidden">
+        <nav class="-mb-px flex space-x-4 sm:space-x-8" aria-label="Tabs">
+            <button class="tab-button active" data-tab="general" type="button" role="tab" aria-controls="general-content" aria-selected="true">General & Location</button>
+            <button class="tab-button" data-tab="prayer-times" type="button" role="tab" aria-controls="prayer-times-content" aria-selected="false">Prayer Times</button>
+            <button class="tab-button" data-tab="profile" type="button" role="tab" aria-controls="profile-content" aria-selected="false">Profile</button>
+        </nav>
+    </div>
+
+    <form id="settingsForm" class="space-y-8">
+        <!-- General & Location Settings Tab Content -->
+        <div id="general-content" role="tabpanel" class="tab-content-panel">
+            <h2 class="text-xl font-semibold text-brand-yellow mb-4">General & Location</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="time_format_preference" class="input-label">Time Display Format</label>
+                    <select name="preferences.time_format" id="time_format_preference" class="input-field">
+                        <option value="12h" {% if user_profile.time_format_preference == '12h' %}selected{% endif %}>12-Hour (AM/PM)</option>
+                        <option value="24h" {% if user_profile.time_format_preference == '24h' %}selected{% endif %}>24-Hour</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="calculation_method" class="input-label">Prayer Calculation Method</label>
+                    <select name="preferences.calculation_method" id="calculation_method" class="input-field">
+                        {# User sees "Shafii (Standard)", "Hanafi". Value is API key like "Karachi", "ISNA_HANAFI" #}
+                        {% for choice in calculation_method_choices %}
+                            <option value="{{ choice.key }}" {% if user_profile.default_calculation_method == choice.key %}selected{% endif %}>{{ choice.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mt-6">
+                <label for="home_city_name" class="input-label">Home Location City Name (Optional)</label>
+                <input type="text" name="home_location.city_name" id="home_city_name" class="input-field" value="{{ user_profile.default_city_name or '' }}" placeholder="e.g., Mumbai, India (for reference)">
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                <div>
+                    <label for="home_latitude" class="input-label">Home Latitude (Required)</label>
+                    <input type="number" step="any" name="home_location.latitude" id="home_latitude" class="input-field" value="{{ user_profile.default_latitude or '' }}" placeholder="e.g., 19.0760" required>
+                </div>
+                <div>
+                    <label for="home_longitude" class="input-label">Home Longitude (Required)</label>
+                    <input type="number" step="any" name="home_location.longitude" id="home_longitude" class="input-field" value="{{ user_profile.default_longitude or '' }}" placeholder="e.g., 72.8777" required>
+                </div>
+            </div>
+             <div class="mt-6 space-y-3">
+                <div class="flex items-center">
+                    <input id="adjust_timings_with_api_location" name="preferences.adjust_offsets_on_location_change" type="checkbox" 
+                           class="form-checkbox h-4 w-4 text-primary bg-surface border-outline rounded focus:ring-primary"
+                           {% if user_settings.adjust_timings_with_api_location %}checked{% endif %}>
+                    <label for="adjust_timings_with_api_location" class="ml-2 block text-sm text-on-surface-variant">
+                        Auto-adjust my set Azan/Jamaat intervals if current API location changes?
+                    </label>
+                </div>
+                 <div class="flex items-center">
+                    <input id="auto_update_api_location" name="preferences.auto_update_location" type="checkbox" 
+                           class="form-checkbox h-4 w-4 text-primary bg-surface border-outline rounded focus:ring-primary"
+                           {% if user_settings.auto_update_api_location %}checked{% endif %}>
+                    <label for="auto_update_api_location" class="ml-2 block text-sm text-on-surface-variant">
+                        Try to auto-update current API location periodically (requires GPS permission)?
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prayer Times Settings Tab Content -->
+        <div id="prayer-times-content" role="tabpanel" class="tab-content-panel hidden">
+            <h2 class="text-xl font-semibold text-brand-yellow mb-4">Prayer Time Specific Settings</h2>
+             {% set prayer_names_map_settings = {
+                'fajr': {'en': 'Fajr'}, 'dhuhr': {'en': 'Dhuhr'}, 'asr': {'en': 'Asr'}, 
+                'maghrib': {'en': 'Maghrib'}, 'isha': {'en': 'Isha'}, 'jummah': {'en': "Jum'ah"}
+            } %}
+            {% for p_key, p_names in prayer_names_map_settings.items() %}
+            <div class="border border-outline p-3 sm:p-4 rounded-md space-y-3 sm:space-y-4 prayer-setting-card mb-4" id="{{ p_key }}-settings-card">
+                <h3 class="text-lg font-semibold text-primary">{{ p_names.en }} Settings</h3>
+                
+                {% if p_key != 'jummah' and api_times_for_reference %}
+                <p class="text-xs text-on-surface-variant">
+                    Ref. API Start for your Home Location: 
+                    <span class="font-digital-display text-digital-purple">
+                        {# API keys are capitalized, e.g., Fajr, Dhuhr #}
+                        {{ api_times_for_reference.get(p_key.title(), 'N/A') }}
+                    </span>
+                </p>
+                {% endif %}
+
+                {% if p_key != 'jummah' %}
+                <div class="flex items-center space-x-4 text-sm">
+                    <span class="input-label pt-1">Mode:</span>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="prayer_times.{{ p_key }}.is_fixed" value="true" class="form-radio h-4 w-4 text-primary bg-surface border-outline focus:ring-primary settings-mode-radio" 
+                               data-prayer="{{ p_key }}" {% if user_settings[p_key ~ '_is_fixed'] %}checked{% endif %}>
+                        <span class="ml-2 text-on-surface-variant">Fixed Time</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="prayer_times.{{ p_key }}.is_fixed" value="false" class="form-radio h-4 w-4 text-primary bg-surface border-outline focus:ring-primary settings-mode-radio"
+                               data-prayer="{{ p_key }}" {% if not user_settings[p_key ~ '_is_fixed'] %}checked{% endif %}>
+                        <span class="ml-2 text-on-surface-variant">Offset from API</span>
+                    </label>
+                </div>
+                {% endif %}
+
+                {# Fixed Time Inputs #}
+                <div class="settings-fixed-inputs grid grid-cols-1 sm:grid-cols-2 gap-4 {{ 'hidden' if p_key != 'jummah' and not user_settings[p_key ~ '_is_fixed'] }}" id="{{ p_key }}-fixed-settings-inputs">
+                    <div>
+                        <label for="{{ p_key }}_fixed_azan" class="input-label">{{ 'Azan Time' if p_key != 'jummah' else 'Jummah Azan' }} (HH:MM)</label>
+                        <input type="time" name="prayer_times.{{ p_key }}.fixed_azan" id="{{ p_key }}_fixed_azan" class="input-field" value="{{ user_settings[p_key ~ '_fixed_azan' if p_key != 'jummah' else 'jummah_azan_time'] }}">
+                    </div>
+                    {% if p_key == 'jummah' %}
+                    <div>
+                         <label for="jummah_fixed_khutbah" class="input-label">Jummah Khutbah Start (HH:MM)</label>
+                         <input type="time" name="prayer_times.jummah.fixed_khutbah" id="jummah_fixed_khutbah" class="input-field" value="{{ user_settings.jummah_khutbah_start_time }}">
+                    </div>
+                    {% endif %}
+                    <div>
+                        <label for="{{ p_key }}_fixed_jamaat" class="input-label">{{ 'Jamaat Time' if p_key != 'jummah' else 'Jummah Jamaat' }} (HH:MM)</label>
+                        <input type="time" name="prayer_times.{{ p_key }}.fixed_jamaat" id="{{ p_key }}_fixed_jamaat" class="input-field" value="{{ user_settings[p_key ~ '_fixed_jamaat' if p_key != 'jummah' else 'jummah_jamaat_time'] }}">
+                    </div>
+                </div>
+
+                {# Offset Inputs (No interactive clock here) #}
+                {% if p_key != 'jummah' %}
+                <div class="settings-offset-inputs grid grid-cols-1 sm:grid-cols-2 gap-4 {{ 'hidden' if user_settings[p_key ~ '_is_fixed'] }}" id="{{ p_key }}-offset-settings-inputs">
+                    <div>
+                        <label for="{{ p_key }}_azan_offset" class="input-label">Azan Offset (mins from API start)</label>
+                        <input type="number" name="prayer_times.{{ p_key }}.azan_offset" id="{{ p_key }}_azan_offset" class="input-field offset-minute-input" data-prayer="{{ p_key }}" data-type="azan" value="{{ user_settings[p_key ~ '_azan_offset'] }}" min="-60" max="120">
+                        <p class="text-xs text-on-surface-variant mt-1">Calculated Azan for Home: <span id="{{ p_key }}-calc-azan-home" class="font-digital-display text-digital-orange">--:--</span></p>
+                    </div>
+                    <div>
+                        <label for="{{ p_key }}_jamaat_offset" class="input-label">Jama'at Offset (mins from Azan)</label>
+                        <input type="number" name="prayer_times.{{ p_key }}.jamaat_offset" id="{{ p_key }}_jamaat_offset" class="input-field offset-minute-input" data-prayer="{{ p_key }}" data-type="jamaat" value="{{ user_settings[p_key ~ '_jamaat_offset'] }}" min="0" max="60">
+                        <p class="text-xs text-on-surface-variant mt-1">Calculated Jama'at for Home: <span id="{{ p_key }}-calc-jamaat-home" class="font-digital-display text-digital-orange">--:--</span></p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% if not loop.last %} <hr class="border-outline my-3"> {% endif %}
+            {% endfor %}
+        </div>
+
+        <!-- Profile Settings Tab Content -->
+        <div id="profile-content" role="tabpanel" class="tab-content-panel hidden">
+            <h2 class="text-xl font-semibold text-brand-yellow mb-4">Profile Information</h2>
+            <div>
+                <label for="profile_name" class="input-label">Display Name</label>
+                <input type="text" name="profile.name" id="profile_name" class="input-field" value="{{ user_profile.name or '' }}" placeholder="Your preferred display name">
+            </div>
+            <div class="mt-4">
+                <p class="input-label">Email (Cannot be changed)</p>
+                <input type="email" class="input-field bg-background border-outline cursor-not-allowed opacity-70" value="{{ user_profile.email }}" readonly disabled>
+            </div>
+             <p class="mt-6 text-sm text-on-surface-variant">
+                (Password change functionality will be added in a future update.)
+            </p>
+        </div>
+
+        <div class="pt-6 mt-6 border-t border-outline">
+            <div class="flex justify-end">
+                <button type="button" id="saveAllSettingsButton" class="btn-primary text-base px-8 py-3">
+                    Save All My Settings
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+    <script>
+    const currentUserSettings = {{ user_settings | tojson | safe }};
+    const currentUserProfile = {{ user_profile | tojson | safe }}; // अगर ऊपर वाला function यूज़ किया हो
+    const apiTimesForRef = {{ api_times_for_reference | tojson | safe }};
+    const calcMethodChoicesFromFlask = {{ calculation_method_choices | tojson | safe }};
+    </script>
+    <script src="{{ url_for('static', filename='js/settings_script.js') }}"></script>
+{% endblock scripts %}

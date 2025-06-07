@@ -1,0 +1,18 @@
+Flask>=2.2                         # Web app बनाने की बेस framework लाइब्रेरी
+Flask-SQLAlchemy>=3.0             # SQLAlchemy ORM के लिए Flask support (DB models)
+Flask-Login>=0.6                  # Login और User authentication system
+Flask-WTF>=1.0                    # HTML forms + CSRF protection support
+email_validator>=1.0.3            # Email validation के लिए (WTForms में इस्तेमाल होता है)
+Flask-Cors>=3.0                   # CORS policy handle करने के लिए (browser access issues)
+Flask-Limiter>=2.0                # Rate limiting (spam से बचाव / abuse control)
+Flask-Migrate>=4.0                # DB migration के लिए (बिना data loss के schema update)
+Werkzeug>=2.2                     # Flask का internal tool (Password hashing, routing, etc.)
+python-dotenv>=0.20               # .env फाइल से config variables load करने के लिए
+requests>=2.28                    # HTTP request भेजने के लिए (API call etc.)
+
+Flask-Mail>=0.9.1                 # OTP या email भेजने के लिए SMTP email system
+
+gunicorn>=20.1.0                  # Production में Flask app चलाने के लिए WSGI HTTP server
+
+psycopg2-binary>=2.9              # PostgreSQL database support (Live deploy में जरूरी)
+Flask-Mail

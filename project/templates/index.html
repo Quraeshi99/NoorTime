@@ -1,0 +1,247 @@
+{% extends "base_layout.html" %}
+
+{% block title %}Prayer Times{% endblock title %} {# Title will be dynamically updated by JS with location #}
+
+{% block head_extra %}
+    {# manifest.json is already in base_layout.html, ensure path is correct there #}
+    {# <link rel="manifest" href="/manifest.json"> if it's in root, or adjust path #}
+    <style>
+        /* Specific styles for index.html if any, beyond what Tailwind and input.css provide */
+        /* Example: Ensure digital font is applied where needed if not done by utility class */
+        .font-digital-display {
+             font-family: 'Orbitron', 'Share Tech Mono', 'DS-Digital', monospace !important; /* Force if needed */
+        }
+        .prayer-row-main {
+            /* Custom styling for prayer rows if Tailwind utilities are not enough */
+        }
+         /* Subtle pulsing animation for live indicator */
+        @keyframes pulse-live {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .live-indicator {
+            animation: pulse-live 2s infinite ease-in-out;
+        }
+        /* Offline banner styling */
+        #offline-indicator {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #E53E3E; /* brand-red */
+            color: white;
+            text-align: center;
+            padding: 0.5rem;
+            font-size: 0.875rem;
+            z-index: 1000;
+            display: none; /* Hidden by default, shown by JS */
+        }
+    </style>
+{% endblock head_extra %}
+
+{% block content %}
+<div class="main-grid grid grid-cols-1 lg:grid-cols-[minmax(260px,_300px)_1fr_minmax(300px,_340px)] gap-3 md:gap-4 w-full">
+
+    <!-- Left Panel: Timings & Dates -->
+    <div class="panel left-panel-grid bg-brand-panel p-3 rounded-lg shadow-lg space-y-3">
+        <div class="info-box live-clock-box bg-brand-box p-3 rounded-md text-center shadow">
+            <div id="currentTime" class="time-large font-digital-display text-brand-red text-4xl md:text-5xl">00:00:00 AM</div>
+            <div class="flex justify-between items-center text-xs px-1 pt-1">
+                <span id="currentDay" class="day-info text-brand-light-gray font-medium">DAY</span>
+                <span id="timeToNextJamaat" class="countdown-info text-brand-green font-medium">Next: -- in -- min</span>
+            </div>
+        </div>
+
+        <div class="info-box next-jamaat-box bg-brand-box p-3 rounded-md text-center shadow">
+            <div id="nextJamaatDisplayTime" class="font-digital-display text-brand-green text-3xl md:text-4xl">00:00 AM</div>
+            <div class="namaz-name-display text-xs sm:text-sm mt-1">
+                <span id="nextJamaatName" class="text-brand-blue font-semibold">NAMAZ</span>
+                <span class="text-brand-yellow mx-1">Azan:</span>
+                <span id="nextJamaatAzanTime" class="font-digital-display text-brand-yellow">00:00 AM</span>
+            </div>
+            <div id="jamaatCountdown" class="font-digital-display text-brand-red text-xl md:text-2xl mt-1.5" style="display:none;">00:00</div>
+            <div id="postJamaatCountdown" class="font-digital-display text-brand-orange text-xl md:text-2xl mt-1.5" style="display:none;">00:00</div>
+        </div>
+
+        <div class="info-box current-namaz-period-box bg-brand-box p-3 rounded-md text-center text-xs shadow">
+            <div class="mb-0.5">
+                <span class="text-brand-purple">START</span> <span id="currentNamazStart" class="font-digital-display text-brand-purple">00:00 AM</span>
+            </div>
+            <div id="currentNamazName" class="namaz-name-medium text-brand-blue font-semibold my-1 text-base sm:text-lg">NAMAZ PERIOD</div>
+            <div class="mt-0.5">
+                <span class="text-brand-purple">END</span> <span id="currentNamazEnd" class="font-digital-display text-brand-purple">00:00 AM</span>
+            </div>
+            <hr class="border-brand-border my-2">
+            <div>
+                <span class="text-brand-purple">ZAWAL START</span> <span id="zawalStartTimeApi" class="font-digital-display text-brand-purple">00:00 AM</span>
+            </div>
+            <div class="mt-0.5">
+                <span class="text-brand-purple">ZAWAL END</span> <span id="zawalEndTimeApi" class="font-digital-display text-brand-purple">00:00 AM</span>
+            </div>
+        </div>
+
+        <div class="info-box date-and-fasting-box bg-brand-box p-3 rounded-md text-center text-xs shadow">
+            <div>
+                <span class="text-brand-orange">SAHR</span> <span id="sahrTime" class="font-digital-display text-brand-orange">00:00 AM</span>
+            </div>
+            <div class="mt-0.5">
+                <span class="text-brand-orange">IFTAR</span> <span id="iftarTime" class="font-digital-display text-brand-orange">00:00 AM</span>
+            </div>
+            <hr class="border-brand-border my-2">
+            <div id="gregorianDate" class="date-info text-brand-yellow font-medium">DD-MM-YYYY, DAY</div>
+            <div id="hijriDate" class="date-info text-brand-medium-gray mt-0.5">DD MONTH YYYY AH</div>
+        </div>
+    </div>
+
+    <!-- Center Panel: Masjid Name/Location, Calligraphy, Update Location -->
+    <div class="panel center-panel-grid bg-brand-panel p-3 rounded-lg shadow-lg flex flex-col items-center justify-around text-center">
+        <div class="my-2 text-center">
+             <h1 id="currentApiLocationDisplay" class="text-sm sm:text-base font-semibold text-brand-yellow mb-0.5 truncate" title="Current location for API times">
+                Fetching Location...
+             </h1>
+             <p id="currentTemperatureDisplay" class="text-xs text-brand-medium-gray">--°C</p>
+        </div>
+
+        <div class="my-2">
+            <!-- SVG Icon for Mosque Dome (Placeholder, replace with your actual image/SVG if desired) -->
+            <svg class="w-28 h-28 md:w-36 md:h-36 text-brand-green mx-auto" viewBox="0 0 100 100" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                <defs><linearGradient id="domeGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#66BB6A;"/><stop offset="100%" style="stop-color:#388E3C;"/></linearGradient></defs>
+                <path d="M50,90 C22.39,90 0,67.61 0,40 C0,12.39 22.39,0 50,0 C77.61,0 100,12.39 100,40 C100,67.61 77.61,90 50,90 Z" fill="url(#domeGrad)" transform="translate(0 5)"/>
+                <path d="M48,0 L52,0 L52,7 L50,10 L48,7 Z" fill="#F1FA8C" transform="translate(0 5)"></path>
+                <rect x="5" y="85" width="90" height="10" rx="2" ry="2" fill="#4A5568" transform="translate(0 5)"></rect>
+            </svg>
+        </div>
+        
+        <div class="my-1 text-center">
+            <p id="homeLocationNameDisplay" class="text-lg md:text-xl font-bold text-brand-light-gray" title="Your configured Home Location for Azan/Jamaat settings">
+                <!-- My Home Masjid -->
+                (Set Home in Settings)
+            </p>
+            <p class="text-xs text-brand-medium-gray">(Azan/Jama'at times are based on this Home Location's settings)</p>
+        </div>
+
+        <div class="mt-auto pt-3 w-full">
+            <button id="updateApiLocationBtn" class="admin-button bg-brand-blue hover:bg-opacity-80 w-full text-sm py-2.5">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Update API Location
+            </button>
+        </div>
+    </div>
+
+    <!-- Right Panel: Main Prayer Times Table -->
+    <div class="panel right-panel-grid bg-brand-panel p-3 rounded-lg shadow-lg">
+        <div class="text-center mb-1.5">
+            <span class="text-brand-red font-semibold text-sm">Azan</span>
+            <span class="mx-1 sm:mx-2 text-brand-light-gray">|</span>
+            <span class="text-brand-green font-semibold text-sm">Jama'at</span>
+        </div>
+        <div class="prayer-table-grid space-y-1 text-xs sm:text-sm">
+            {% set prayer_map_main = {
+                'fajr': {'en': 'FAJR', 'ar': 'فجر'}, 'dhuhr': {'en': 'DHUHR', 'ar': 'ظهر'},
+                'asr': {'en': 'ASR', 'ar': 'عصر'}, 'maghrib': {'en': 'MAGHRIB', 'ar': 'مغرب'},
+                'isha': {'en': 'ISHA', 'ar': 'عشاء'} 
+            } %}
+            {% for p_key, p_display in prayer_map_main.items() %}
+            <div class="prayer-row prayer-row-main flex justify-between items-center py-1 px-1.5 sm:px-2 rounded-md bg-brand-box shadow-sm">
+                <span class="text-brand-blue font-medium prayer-name-en w-1/3 truncate" data-prayer="{{ p_key }}">{{ p_display.en }}</span>
+                <div class="text-center w-auto min-w-[90px] sm:min-w-[110px]"> {# Adjusted width #}
+                    <span class="font-digital-display text-brand-red prayer-azan" data-prayer="{{ p_key }}">00:00 AM</span>
+                    <span class="font-digital-display text-brand-green prayer-jamaat ml-1.5 sm:ml-2" data-prayer="{{ p_key }}">00:00 AM</span>
+                </div>
+                <span class="text-brand-blue prayer-name-ar w-1/3 text-right truncate" data-prayer="{{ p_key }}" dir="rtl">{{ p_display.ar }}</span>
+            </div>
+            {% endfor %}
+            
+            <hr class="border-brand-border my-1.5">
+
+            <div class="prayer-row flex justify-between items-center py-1 px-1.5 sm:px-2 rounded-md bg-brand-box shadow-sm">
+                <span class="text-brand-blue font-medium prayer-name-en w-1/3 truncate" data-prayer="jummah">JUM'AH</span>
+                <div class="text-center w-auto min-w-[90px] sm:min_w-[110px]">
+                    <span class="font-digital-display text-brand-red prayer-azan" data-prayer="jummah">00:00 AM</span>
+                    <span class="font-digital-display text-brand-green prayer-jamaat ml-1.5 sm:ml-2" data-prayer="jummah">00:00 AM</span>
+                </div>
+                <span class="text-brand-blue prayer-name-ar w-1/3 text-right truncate" data-prayer="jummah" dir="rtl">جمعه</span>
+            </div>
+             <div id="khutbahDisplayRow" class="prayer-row flex justify-between items-center py-1 px-1.5 sm:px-2 rounded-md bg-brand-box shadow-sm mt-1" style="display: none;">
+                <span class="text-brand-orange font-medium w-1/3 truncate">KHUTBAH</span>
+                <div class="text-center w-auto min-w-[90px] sm:min_w-[110px]">
+                    <span id="khutbahTimeDisplay" class="font-digital-display text-brand-orange">00:00 AM</span>
+                </div>
+                <span class="text-brand-orange w-1/3 text-right truncate" dir="rtl">خطبة</span>
+            </div>
+
+
+            <hr class="border-brand-border my-1.5">
+
+            <div class="other-times-grid space-y-1">
+                {% set other_times_map_main = {
+    'Sunrise': {'en': "SUNRISE (Tulu')", 'ar': 'طلوع', 'id': 'tulu'},
+    'Sunset': {'en': "SUNSET (Gurub)", 'ar': 'غروب', 'id': 'gurub'},
+    'TomorrowFajr': {'en': 'TOMORROW FAJR', 'ar': 'آئند کل', 'id': 'tomorrow-fajr'}
+} %}
+{# Zawal is in left panel #}
+                {% for ot_key_internal, ot_display_info in other_times_map_main.items() %}
+                <div class="flex justify-between items-center py-0.5 sm:py-1 px-1.5 sm:px-2 rounded-md bg-brand-box shadow-sm">
+                    <span class="text-brand-orange font-medium w-1/2 truncate">{{ ot_display_info.en }}</span>
+                    <span id="{{ ot_display_info.id }}" class="font-digital-display text-brand-orange w-1/4 text-center">00:00 AM</span>
+                    <span class="text-brand-orange w-1/4 text-right truncate" dir="rtl">{{ ot_display_info.ar }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Location Update Modal (Hidden by default) -->
+    <div id="locationModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-[100] hidden print:hidden">
+        <div class="bg-brand-panel p-6 rounded-lg shadow-xl w-full max-w-md space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-brand-yellow">Update API Location</h2>
+                <button id="closeLocationModal" class="text-brand-light-gray hover:text-brand-red">×</button>
+            </div>
+            <div>
+                <button id="detectLocationBtn" class="admin-button bg-brand-green hover:bg-opacity-80 w-full mb-3 text-sm">Detect My Location (GPS)</button>
+            </div>
+            <p class="text-xs text-brand-medium-gray text-center">OR ENTER MANUALLY:</p>
+            <div>
+                <label for="cityInput" class="admin-label">City Name</label>
+                <input type="text" id="cityInput" class="admin-input" placeholder="e.g., Mumbai, IN">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="latInput" class="admin-label">Latitude</label>
+                    <input type="number" step="any" id="latInput" class="admin-input" placeholder="e.g., 19.0760">
+                </div>
+                <div>
+                    <label for="lonInput" class="admin-label">Longitude</label>
+                    <input type="number" step="any" id="lonInput" class="admin-input" placeholder="e.g., 72.8777">
+                </div>
+            </div>
+            <div id="geocodeError" class="text-xs text-red-500 mt-1 hidden"></div>
+            <div id="geocodeSuccess" class="text-xs text-green-500 mt-1 hidden"></div>
+            <button id="submitLocationBtn" class="admin-button w-full mt-4 text-sm">Update Location & Fetch Times</button>
+        </div>
+    </div>
+    
+    <!-- Offline Indicator Banner -->
+    <div id="offline-indicator">
+        You are currently offline. Displaying cached data if available.
+    </div>
+
+    <audio id="beepSound" preload="auto">
+        <source src="{{ url_for('static', filename='sounds/beep.mp3') }}" type="audio/mpeg">
+        <source src="{{ url_for('static', filename='sounds/beep.wav') }}" type="audio/wav">
+    </audio>
+{% endblock content %}
+
+{% block scripts %}
+    <script>
+        // Pass any initial data from Flask to JavaScript if needed for main page logic
+        // (Most data will come from /api/initial_prayer_data and /api/live_data)
+        const serviceWorkerPath = "{{ url_for('static', filename='service-worker.js', _external=True) if 'REPLIT_ENVIRONMENT' not in config else '/service-worker.js' }}";
+        // _external=True is for local dev if app is not at root.
+        // On Replit, relative path '/service-worker.js' (from root) should work.
+        // Let's simplify to always use root path assuming SW is in root and app is served from root.
+        // const swPathForRegister = '/service-worker.js';
+    </script>
+    <script src="{{ url_for('static', filename='js/main_script.js') }}"></script>
+{% endblock scripts %}

@@ -1,0 +1,86 @@
+{% extends "base_layout.html" %}
+
+{% block title %}Login{% endblock title %}
+
+{% block head_extra %}
+    {# इस पेज के लिए कोई अतिरिक्त <head> कंटेंट नहीं #}
+{% endblock head_extra %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
+    <div class="w-full bg-brand-panel rounded-lg shadow-xl md:mt-0 sm:max-w-md xl:p-0">
+        <div class="p-6 space-y-4 md:space-y-6 sm:p-8">
+            <div class="text-center">
+                <h1 class="text-xl font-bold leading-tight tracking-tight text-brand-yellow md:text-2xl">
+                    Sign in to your account
+                </h1>
+                <p class="text-sm text-brand-medium-gray mt-1">Access your prayer settings</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="p-3 rounded-md text-sm
+                            {% if category == 'danger' %} bg-red-500 text-white 
+                            {% elif category == 'success' %} bg-green-500 text-white
+                            {% elif category == 'info' %} bg-blue-500 text-white
+                            {% elif category == 'warning' %} bg-yellow-500 text-black 
+                            {% else %} bg-gray-700 text-gray-100 
+                            {% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form class="space-y-4 md:space-y-6" method="POST" action="{{ url_for('auth.login') }}" novalidate>
+                {{ form.hidden_tag() }} {# CSRF token and other hidden fields #}
+                
+                <div>
+                    {{ form.email.label(class="admin-label mb-1") }}
+                    {{ form.email(class="admin-input", placeholder="name@example.com", **{'aria-describedby': 'email-error'}) }}
+                    {% if form.email.errors %}
+                        <div id="email-error" class="text-xs text-red-500 mt-1">
+                            {% for error in form.email.errors %}<span>{{ error }}</span>{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div>
+                    {{ form.password.label(class="admin-label mb-1") }}
+                    {{ form.password(class="admin-input", placeholder="••••••••", **{'aria-describedby': 'password-error'}) }}
+                     {% if form.password.errors %}
+                        <div id="password-error" class="text-xs text-red-500 mt-1">
+                            {% for error in form.password.errors %}<span>{{ error }}</span>{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <div class="flex items-start">
+                        <div class="flex items-center h-5">
+                          {{ form.remember_me(class="w-4 h-4 border border-brand-medium-gray rounded bg-brand-box focus:ring-3 focus:ring-brand-blue") }}
+                        </div>
+                        <div class="ml-3 text-sm">
+                          {{ form.remember_me.label(class="text-brand-light-gray") }}
+                        </div>
+                    </div>
+                    {# <a href="#" class="text-sm font-medium text-brand-blue hover:underline">Forgot password?</a> #}
+                    {# "Forgot password" भविष्य में जोड़ा जा सकता है #}
+                </div>
+                
+                {{ form.submit(class="admin-button w-full justify-center text-sm") }}
+                
+                <p class="text-sm font-light text-brand-medium-gray text-center">
+                    Don’t have an account yet? <a href="{{ url_for('auth.register') }}" class="font-medium text-brand-blue hover:underline">Sign up</a>
+                </p>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+    {# इस पेज के लिए कोई विशेष JavaScript नहीं, यदि हो तो auth_script.js में डालें #}
+    {# <script src="{{ url_for('static', filename='js/auth_script.js') }}"></script> #}
+{% endblock scripts %}
