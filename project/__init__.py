@@ -1,4 +1,6 @@
 # project/__init__.py
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
 from flask_mail import Mail
 from .utils.mail_config import get_smtp_config
 from flask_login import LoginManager
@@ -37,7 +39,21 @@ login_manager.login_view = 'auth.login' # auth ब्लूप्रिंट �
 login_manager.login_message_category = 'info'
 login_manager.login_message = "कृपया इस पृष्ठावर प्रवेश करण्यासाठी लॉग इन करा." # Login message in Marathi or English as per app lang
 
+def create_app(config_name):
 
+    sentry_sdk.init(
+        dsn="https://86fa82252c8e7c403361307d500fb84f@o4509459679281152.ingest.us.sentry.io/4509459707789312",  # यहाँ अपना Sentry DSN डालना है
+        integrations=[FlaskIntegration()],
+        send_default_pii=True,       # User info भेजना हो तो True रखो
+        traces_sample_rate=1.0       # Performance tracing के लिए, 0.0 से 1.0 तक, 1.0 मतलब 100%
+    )
+
+    app = Flask(__name__,
+                instance_relative_config=False,
+                static_folder='static',
+                template_folder='templates')
+
+    # बाकी का कोड वैसे ही...
 def create_app(config_name):
     """
     Flask Application Factory.
