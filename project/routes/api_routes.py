@@ -127,7 +127,7 @@ def get_tomorrow_display_for_current_prayer(today_api_times, api_times_tomorrow,
     now = datetime.now()
     current_prayer = get_current_prayer_name(now, today_api_times)
 
-    return api_times_tomorrow.get(current_prayer, "Unknown")
+ #   return api_times_tomorrow.get(current_prayer, "Unknown")
     # अगर कल के टाइम्स मौजूद नहीं है
 if not api_times_tomorrow or not api_times_tomorrow.get(current_prayer):
     return {
