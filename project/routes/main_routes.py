@@ -90,7 +90,7 @@ def settings():
     return render_template('settings.html', 
                            title="सेटिंग्ज", # Settings in Marathi
                            user_settings=user_settings_to_dict(user_settings), # User's current prayer time settings
-                           user_profile=current_user,   # User's general profile (location, method pref)
+                           user_profile=user_profile_to_dict(current_user),   # User's general profile (location, method pref)
                            api_times_for_reference=today_api_times,
                            calculation_method_choices=calculation_method_choices_for_template)
 
@@ -150,6 +150,20 @@ def user_settings_to_dict(user_settings):
         'jummah_azan_time': user_settings.jummah_azan_time,
         'jummah_khutbah_start_time': user_settings.jummah_khutbah_start_time,
         'jummah_jamaat_time': user_settings.jummah_jamaat_time,
+    }
+    def user_profile_to_dict(user):
+    if not user:
+        return {}
+
+    return {
+        'id': user.id,
+        'email': user.email,
+        'name': user.name,
+        'default_latitude': user.default_latitude,
+        'default_longitude': user.default_longitude,
+        'default_calculation_method': user.default_calculation_method,
+        'time_format_preference': user.time_format_preference,
+        'is_admin': getattr(user, 'is_admin', False)
     }
     # Note: The actual form submission for settings is handled by /api/user/settings/update (POST) via JavaScript.
     # This GET route is just to render the page with initial data.
