@@ -129,13 +129,14 @@ def get_tomorrow_display_for_current_prayer(today_api_times, api_times_tomorrow,
 
  #   return api_times_tomorrow.get(current_prayer, "Unknown")
     # अगर कल के टाइम्स मौजूद नहीं है
-if not api_times_tomorrow or not api_times_tomorrow.get(current_prayer):
-    return {
-        "prayer": current_prayer,
-        "azan": "N/A",
-        "jamaat": "N/A"
-    }
-
+def get_prayer_info(current_prayer, api_times_tomorrow):
+    if not api_times_tomorrow or not api_times_tomorrow.get(current_prayer):
+        return {
+            "prayer": current_prayer,
+            "azan": "N/A",
+            "jamaat": "N/A"
+        }
+    
 tomorrow_time_obj = parse_time_internal(api_times_tomorrow.get(current_prayer))
 if not tomorrow_time_obj:
     return {
