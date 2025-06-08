@@ -93,7 +93,7 @@ def initial_prayer_data():
     display_times = calculate_display_times_from_service(user_prayer_settings_obj, api_times_today, current_app.config)
     
     # Tomorrow's Fajr display details (Azan and Jamaat)
-    📁 File: project/utils/prayer_display_helper.py
+    File: project/utils/prayer_display_helper.py
 
 from datetime import datetime, time from project.utils.time_utils import parse_time_internal, format_time_internal, add_minutes_to_time
 
