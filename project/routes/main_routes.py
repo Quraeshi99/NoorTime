@@ -49,48 +49,38 @@ def settings():
             flash("सेटिंग्ज लोड करताना त्रुटी आली. कृपया पुन्हा प्रयत्न करा.", "danger") # Marathi
             return redirect(url_for('main.index'))
 
-
     # एडमिन पैनल की तरह, संदर्भ के लिए आज का API समय प्राप्त करें
-    # यह उस लोकेशन और मेथड पर आधारित होगा जो उपयोगकर्ता ने अपनी प्रोफाइल में सेट किया है
-    # (या डिफ़ॉल्ट, यदि सेट नहीं है)
     user_lat = current_user.default_latitude if current_user.default_latitude is not None else float(current_app.config.get('DEFAULT_LATITUDE', 19.2183))
     user_lon = current_user.default_longitude if current_user.default_longitude is not None else float(current_app.config.get('DEFAULT_LONGITUDE', 72.8493))
     user_calc_method_key = current_user.default_calculation_method if current_user.default_calculation_method else current_app.config.get('DEFAULT_CALCULATION_METHOD', 'Karachi')
     
-    # get_api_prayer_times_for_date_from_service अब इन पैरामीटर्स को लेगा
     today_api_times = get_api_prayer_times_for_date_from_service(
         date_obj=datetime.date.today(),
         latitude=user_lat,
         longitude=user_lon,
-        calculation_method_key=user_calc_method_key, # यह 'Karachi', 'ISNA' जैसा की होगा
-        force_refresh=True # सेटिंग्स पेज के लिए हमेशा ताजा डेटा
+        calculation_method_key=user_calc_method_key,
+        force_refresh=True
     )
 
     if not today_api_times:
         current_app.logger.warning("API times for settings page could not be fetched. Using empty dict.")
-        today_api_times = {} # JSON sérialisation के लिए फॉलबैक
+        today_api_times = {}
         flash("सध्याच्या API नमाज़ वेळापत्रकासाठी संदर्भ मिळू शकला नाही.", "warning") # Marathi
 
-    # Calculation method choices (यह forms.py से भी आ सकता है या यहाँ परिभाषित हो सकता है)
-    # ये वो "कुंजी" हैं जो डेटाबेस में स्टोर होंगी और API एडाप्टर को पास की जाएंगी।
-    # UI में दिखने वाले नाम (शाफी, हनफी आदि) JavaScript या टेम्पलेट में मैप किए जाएंगे।
     calculation_method_choices_for_template = [
-        {'key': 'Karachi', 'name': "Karachi (Univ. of Islamic Sci.)"}, # Default for Hanafi Asr
+        {'key': 'Karachi', 'name': "Karachi (Univ. of Islamic Sci.)"},
         {'key': 'ISNA', 'name': "ISNA (N. America) - Standard Asr"},
         {'key': 'MWL', 'name': "Muslim World League - Standard Asr"},
         {'key': 'Egyptian', 'name': "Egyptian General Authority - Standard Asr"},
         {'key': 'Makkah', 'name': "Makkah (Umm al-Qura) - Standard Asr"},
         {'key': 'Tehran', 'name': "Tehran (Univ. of Tehran Geophysics)"},
         {'key': 'Jafari', 'name': "Shia Ithna-Ashari (Jafari)"},
-        # AlAdhan API की अन्य मेथड आईडी को भी यहाँ मैप किया जा सकता है
-        # Example: Method 5 for Egyptian is standard, Method 3 for Karachi
-        # We need a mapping from "Shafii", "Hanafi" to these keys in the JS/template.
     ]
 
     return render_template('settings.html', 
-                           title="सेटिंग्ज", # Settings in Marathi
-                           user_settings=user_settings_to_dict(user_settings), # User's current prayer time settings
-                           user_profile=user_profile_to_dict(current_user),   # User's general profile (location, method pref)
+                           title="सेटिंग्ज", 
+                           user_settings=user_settings_to_dict(user_settings),
+                           user_profile=user_profile_to_dict(current_user),
                            api_times_for_reference=today_api_times,
                            calculation_method_choices=calculation_method_choices_for_template)
 
@@ -98,60 +88,53 @@ def user_settings_to_dict(user_settings):
     if not user_settings:
         return {}
 
-    user = user_settings.user  # Backref से user मिल रहा है
+    user = user_settings.user
 
     return {
-        # ----------- General User Preferences -----------
         'default_latitude': user.default_latitude if user else None,
         'default_longitude': user.default_longitude if user else None,
         'default_calculation_method': user.default_calculation_method if user else None,
         'time_format_preference': user.time_format_preference if user else None,
 
-        # ----------- Global Settings -----------
         'adjust_timings_with_api_location': user_settings.adjust_timings_with_api_location,
         'auto_update_api_location': user_settings.auto_update_api_location,
 
-        # ----------- Fajr Settings -----------
         'fajr_is_fixed': user_settings.fajr_is_fixed,
         'fajr_fixed_azan': user_settings.fajr_fixed_azan,
         'fajr_fixed_jamaat': user_settings.fajr_fixed_jamaat,
         'fajr_azan_offset': user_settings.fajr_azan_offset,
         'fajr_jamaat_offset': user_settings.fajr_jamaat_offset,
 
-        # ----------- Dhuhr Settings -----------
         'dhuhr_is_fixed': user_settings.dhuhr_is_fixed,
         'dhuhr_fixed_azan': user_settings.dhuhr_fixed_azan,
         'dhuhr_fixed_jamaat': user_settings.dhuhr_fixed_jamaat,
         'dhuhr_azan_offset': user_settings.dhuhr_azan_offset,
         'dhuhr_jamaat_offset': user_settings.dhuhr_jamaat_offset,
 
-        # ----------- Asr Settings -----------
         'asr_is_fixed': user_settings.asr_is_fixed,
         'asr_fixed_azan': user_settings.asr_fixed_azan,
         'asr_fixed_jamaat': user_settings.asr_fixed_jamaat,
         'asr_azan_offset': user_settings.asr_azan_offset,
         'asr_jamaat_offset': user_settings.asr_jamaat_offset,
 
-        # ----------- Maghrib Settings -----------
         'maghrib_is_fixed': user_settings.maghrib_is_fixed,
         'maghrib_fixed_azan': user_settings.maghrib_fixed_azan,
         'maghrib_fixed_jamaat': user_settings.maghrib_fixed_jamaat,
         'maghrib_azan_offset': user_settings.maghrib_azan_offset,
         'maghrib_jamaat_offset': user_settings.maghrib_jamaat_offset,
 
-        # ----------- Isha Settings -----------
         'isha_is_fixed': user_settings.isha_is_fixed,
         'isha_fixed_azan': user_settings.isha_fixed_azan,
         'isha_fixed_jamaat': user_settings.isha_fixed_jamaat,
         'isha_azan_offset': user_settings.isha_azan_offset,
         'isha_jamaat_offset': user_settings.isha_jamaat_offset,
 
-        # ----------- Jummah Settings -----------
         'jummah_azan_time': user_settings.jummah_azan_time,
         'jummah_khutbah_start_time': user_settings.jummah_khutbah_start_time,
         'jummah_jamaat_time': user_settings.jummah_jamaat_time,
     }
-    def user_profile_to_dict(user):
+
+def user_profile_to_dict(user):
     if not user:
         return {}
 
@@ -165,7 +148,3 @@ def user_settings_to_dict(user_settings):
         'time_format_preference': user.time_format_preference,
         'is_admin': getattr(user, 'is_admin', False)
     }
-    # Note: The actual form submission for settings is handled by /api/user/settings/update (POST) via JavaScript.
-    # This GET route is just to render the page with initial data.
-
-# आप यहाँ और भी मुख्य रूट्स (जैसे /about, /contact) जोड़ सकते हैं यदि आवश्यक हो।
