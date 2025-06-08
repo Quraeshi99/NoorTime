@@ -1,6 +1,6 @@
 # project/routes/api_routes.py
 from project.extensions import limiter
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, flash
 from flask_login import current_user, login_required
 import datetime
 import json # For logging complex objects
