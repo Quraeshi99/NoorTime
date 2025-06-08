@@ -93,19 +93,65 @@ def initial_prayer_data():
     display_times = calculate_display_times_from_service(user_prayer_settings_obj, api_times_today, current_app.config)
     
     # Tomorrow's Fajr display details (Azan and Jamaat)
-    tomorrow_fajr_display = {"azan": "N/A", "jamaat": "N/A"}
-    if api_times_tomorrow and api_times_tomorrow.get("Fajr"):
-        # Calculate tomorrow's Fajr based on tomorrow's API and user's Fajr settings
-        tomorrow_fajr_api_start_obj = parse_time_internal(api_times_tomorrow.get("Fajr"))
-        if user_prayer_settings_obj.fajr_is_fixed:
-            tomorrow_fajr_display["azan"] = user_prayer_settings_obj.fajr_fixed_azan
-            tomorrow_fajr_display["jamaat"] = user_prayer_settings_obj.fajr_fixed_jamaat
-        elif tomorrow_fajr_api_start_obj:
-            azan_obj = add_minutes_to_time(tomorrow_fajr_api_start_obj, user_prayer_settings_obj.fajr_azan_offset)
-            tomorrow_fajr_display["azan"] = format_time_internal(azan_obj)
-            if azan_obj:
-                jamaat_obj = add_minutes_to_time(azan_obj, user_prayer_settings_obj.fajr_jamaat_offset)
-                tomorrow_fajr_display["jamaat"] = format_time_internal(jamaat_obj)
+    📁 File: project/utils/prayer_display_helper.py
+
+from datetime import datetime, time from project.utils.time_utils import parse_time_internal, format_time_internal, add_minutes_to_time
+
+PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+
+def get_current_prayer_name(now, today_api_times): """ आज के समय और आज की नमाज़ों के टाइम के आधार पर यह निर्धारित करता है कि अभी कौन सी नमाज़ का वक़्त चल रहा है। """ current_prayer = None last_time = time(0, 0)
+
+for prayer in PRAYERS:
+    prayer_time_str = today_api_times.get(prayer)
+    if not prayer_time_str:
+        continue
+    prayer_time = parse_time_internal(prayer_time_str)
+    if prayer_time and last_time <= now.time() < prayer_time:
+        break
+    current_prayer = prayer
+    last_time = prayer_time
+
+return current_prayer or "Isha"  # अगर रात का समय है
+
+def get_tomorrow_display_for_current_prayer(today_api_times, api_times_tomorrow, user_prayer_settings_obj): """ आज के वक़्त के आधार पर यह function बताता है कि कल उसी नमाज़ का वक़्त क्या होगा। """ now = datetime.now() current_prayer = get_current_prayer_name(now, today_api_times)
+
+# अगर कल के टाइम्स मौजूद नहीं है
+if not api_times_tomorrow or not api_times_tomorrow.get(current_prayer):
+    return {
+        "prayer": current_prayer,
+        "azan": "N/A",
+        "jamaat": "N/A"
+    }
+
+tomorrow_time_obj = parse_time_internal(api_times_tomorrow.get(current_prayer))
+if not tomorrow_time_obj:
+    return {
+        "prayer": current_prayer,
+        "azan": "N/A",
+        "jamaat": "N/A"
+    }
+
+prayer_key = current_prayer.lower()  # e.g., fajr, dhuhr
+
+if getattr(user_prayer_settings_obj, f"{prayer_key}_is_fixed", False):
+    return {
+        "prayer": current_prayer,
+        "azan": getattr(user_prayer_settings_obj, f"{prayer_key}_fixed_azan", "N/A"),
+        "jamaat": getattr(user_prayer_settings_obj, f"{prayer_key}_fixed_jamaat", "N/A")
+    }
+else:
+    azan_offset = getattr(user_prayer_settings_obj, f"{prayer_key}_azan_offset", 0)
+    jamaat_offset = getattr(user_prayer_settings_obj, f"{prayer_key}_jamaat_offset", 0)
+
+    azan_obj = add_minutes_to_time(tomorrow_time_obj, azan_offset)
+    jamaat_obj = add_minutes_to_time(azan_obj, jamaat_offset) if azan_obj else None
+
+    return {
+        "prayer": current_prayer,
+        "azan": format_time_internal(azan_obj) if azan_obj else "N/A",
+        "jamaat": format_time_internal(jamaat_obj) if jamaat_obj else "N/A"
+    }
+
     
     # Get user's time format preference
     time_format_pref = '12h' # Default for guest
