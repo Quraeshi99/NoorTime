@@ -94,8 +94,8 @@ def initial_prayer_data():
     
     # Tomorrow's Fajr display details (Azan and Jamaat)
     File: project/utils/prayer_display_helper.py
-
-from datetime import datetime, time from project.utils.time_utils import parse_time_internal, format_time_internal, add_minutes_to_time
+from datetime import datetime, time
+from project.utils.time_utils import parse_time_internal, format_time_internal, add_minutes_to_time
 
 PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
