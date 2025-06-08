@@ -99,19 +99,28 @@ from project.utils.time_utils import parse_time_internal, format_time_internal, 
 
 PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
-def get_current_prayer_name(now, today_api_times): """ आज के समय और आज की नमाज़ों के टाइम के आधार पर यह निर्धारित करता है कि अभी कौन सी नमाज़ का वक़्त चल रहा है। """ current_prayer = None last_time = time(0, 0)
+from datetime import datetime, time
 
-for prayer in PRAYERS:
-    prayer_time_str = today_api_times.get(prayer)
-    if not prayer_time_str:
-        continue
-    prayer_time = parse_time_internal(prayer_time_str)
-    if prayer_time and last_time <= now.time() < prayer_time:
-        break
-    current_prayer = prayer
-    last_time = prayer_time
+def get_current_prayer_name(now, today_api_times):
+    """
+    आज के समय और आज की नमाज़ों के टाइम के आधार पर यह निर्धारित करता है
+    कि अभी कौन सी नमाज़ का वक़्त चल रहा है।
+    """
+    current_prayer = None
+    last_time = time(0, 0)
 
-return current_prayer or "Isha"  # अगर रात का समय है
+    for prayer in PRAYERS:
+        prayer_time_str = today_api_times.get(prayer)
+        if not prayer_time_str:
+            continue
+        prayer_time = parse_time_internal(prayer_time_str)
+        if prayer_time and last_time <= now.time() < prayer_time:
+            break
+        current_prayer = prayer
+        last_time = prayer_time
+
+    return current_prayer or "Isha"  # अगर रात का समय है
+    
 
 def get_tomorrow_display_for_current_prayer(today_api_times, api_times_tomorrow, user_prayer_settings_obj): """ आज के वक़्त के आधार पर यह function बताता है कि कल उसी नमाज़ का वक़्त क्या होगा। """ now = datetime.now() current_prayer = get_current_prayer_name(now, today_api_times)
 
