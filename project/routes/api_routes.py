@@ -124,6 +124,8 @@ def get_current_prayer_name(now, today_api_times):
 
 def get_tomorrow_display_for_current_prayer(today_api_times, api_times_tomorrow, user_prayer_settings_obj): """ आज के वक़्त के आधार पर यह function बताता है कि कल उसी नमाज़ का वक़्त क्या होगा। """ now = datetime.now() current_prayer = get_current_prayer_name(now, today_api_times)
 
+return api_times_tomorrow.get(current_prayer, "Unknown
+                              
 # अगर कल के टाइम्स मौजूद नहीं है
 if not api_times_tomorrow or not api_times_tomorrow.get(current_prayer):
     return {
