@@ -3,7 +3,7 @@
   "short_name": "PrayerTimes",
   "description": "A global prayer times application with customizable settings.",
   "start_url": "/",
-  "display": "standalone",
+  "display": "fullscreen",
   "background_color": "#1A202C",
   "theme_color": "#2D3748",
   "orientation": "portrait-primary",
