@@ -30,7 +30,7 @@ def clean_env_file(source_path=".env.example", output_path=".env"):
 
     with open(output_path, "w", encoding="utf-8") as out:
         out.write("\n".join(valid_lines))
-    print(f"✅ '{output_path}' फाइल generate हो गई साफ़ डेटा के साथ.")
+    print(f"✅ '{output_path}' file generated with clean data.")
 
 def validate_env(env_path=".env"):
     load_dotenv(dotenv_path=env_path)

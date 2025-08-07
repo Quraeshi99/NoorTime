@@ -1,4 +1,5 @@
 #!/bin/bash
+cd /data/data/com.termux/files/home/NoorTime
 # start_dev.sh - Updated for new project structure
 
 echo "-------------------------------------"
@@ -9,7 +10,7 @@ echo "-------------------------------------"
 echo "[INFO] Starting Tailwind CSS watcher..."
 # The watch:css script in package.json should be:
 # "tailwindcss -i ./project/static/css/src/input.css -o ./project/static/css/dist/style.css --watch"
-npm run watch:css & 
+npm run watch:css &
 TAILWIND_PID=$! 
 
 # Wait a few seconds for Tailwind to compile initially
@@ -20,7 +21,7 @@ echo ""
 echo "[INFO] Starting Flask development server..."
 # Ensure FLASK_APP is set to run.py (can be in .env or Replit Secrets)
 # We will run the app using 'python run.py' as run.py will configure and run the Flask app.
-python run.py
+python3 run.py
 
 FLASK_PID=$! # Get the Process ID of the Flask server (though Flask runs in foreground here)
 

@@ -8,7 +8,6 @@
     .tab-button { @apply px-4 py-2 text-sm font-medium rounded-t-md border-b-2 border-transparent hover:text-primary hover:border-primary focus:outline-none; }
     .tab-button.active { @apply text-primary border-primary; }
     .tab-content-panel { @apply p-4 sm:p-6 bg-surface rounded-b-md rounded-tr-md shadow-lg border border-t-0 border-outline; }
-    /* CSS वेरिएबल्स (रंग, फॉन्ट आदि) input.css में :root से आएंगे */
 </style>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 {% endblock head_extra %}
@@ -16,20 +15,20 @@
 {% block content %}
 <div class="max-w-4xl mx-auto">
     <div class="text-center mb-6 sm:mb-8">
-        <h1 class="text-2xl sm:text-3xl font-bold text-brand-yellow">My Prayer Settings</h1>
-        <p class="text-sm text-brand-medium-gray mt-1">Customize your prayer times and preferences</p>
+        <h1 class="text-2xl sm:text-3xl font-bold text-on-surface">My NoorTime Settings</h1>
+        <p class="text-sm text-on-surface-variant mt-1">Customize your prayer times and preferences</p>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             <div class="mb-6 max-w-3xl mx-auto">
             {% for category, message in messages %}
-                <div class="p-3 rounded-md text-sm text-white
+                <div class="p-3 rounded-md text-sm text-on-primary
                     {% if category == 'danger' %} bg-error 
-                    {% elif category == 'success' %} bg-green-500 {# Use a generic green or define --color-success #}
-                    {% elif category == 'info' %} bg-blue-500   {# Use a generic blue or define --color-info #}
-                    {% elif category == 'warning' %} bg-yellow-500 text-background {# Use a generic yellow #}
-                    {% else %} bg-brand-box text-on-surface-variant 
+                    {% elif category == 'success' %} bg-green-500
+                    {% elif category == 'info' %} bg-blue-500
+                    {% elif category == 'warning' %} bg-yellow-500 text-background
+                    {% else %} bg-primary-container text-on-primary-container
                     {% endif %}">
                     {{ message }}
                 </div>
@@ -41,16 +40,16 @@
     <!-- Tabs Navigation -->
     <div class="mb-0 border-b border-outline print:hidden">
         <nav class="-mb-px flex space-x-4 sm:space-x-8" aria-label="Tabs">
-            <button class="tab-button active" data-tab="general" type="button" role="tab" aria-controls="general-content" aria-selected="true">General & Location</button>
-            <button class="tab-button" data-tab="prayer-times" type="button" role="tab" aria-controls="prayer-times-content" aria-selected="false">Prayer Times</button>
-            <button class="tab-button" data-tab="profile" type="button" role="tab" aria-controls="profile-content" aria-selected="false">Profile</button>
+            <button class="tab-button" data-tab="general" type="button" role="tab" aria-controls="general-content">General & Location</button>
+            <button class="tab-button" data-tab="prayer-times" type="button" role="tab" aria-controls="prayer-times-content">NoorTime</button>
+            <button class="tab-button" data-tab="profile" type="button" role="tab" aria-controls="profile-content">Account</button>
         </nav>
     </div>
 
     <form id="settingsForm" class="space-y-8">
         <!-- General & Location Settings Tab Content -->
         <div id="general-content" role="tabpanel" class="tab-content-panel">
-            <h2 class="text-xl font-semibold text-brand-yellow mb-4">General & Location</h2>
+            <h2 class="text-xl font-semibold text-on-surface mb-4">General & Location</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label for="time_format_preference" class="input-label">Time Display Format</label>
@@ -62,7 +61,6 @@
                 <div>
                     <label for="calculation_method" class="input-label">Prayer Calculation Method</label>
                     <select name="preferences.calculation_method" id="calculation_method" class="input-field">
-                        {# User sees "Shafii (Standard)", "Hanafi". Value is API key like "Karachi", "ISNA_HANAFI" #}
                         {% for choice in calculation_method_choices %}
                             <option value="{{ choice.key }}" {% if user_profile.default_calculation_method == choice.key %}selected{% endif %}>{{ choice.name }}</option>
                         {% endfor %}
@@ -103,9 +101,9 @@
             </div>
         </div>
 
-        <!-- Prayer Times Settings Tab Content -->
+        <!-- NoorTime Settings Tab Content -->
         <div id="prayer-times-content" role="tabpanel" class="tab-content-panel hidden">
-            <h2 class="text-xl font-semibold text-brand-yellow mb-4">Prayer Time Specific Settings</h2>
+            <h2 class="text-xl font-semibold text-on-surface mb-4">NoorTime Specific Settings</h2>
              {% set prayer_names_map_settings = {
                 'fajr': {'en': 'Fajr'}, 'dhuhr': {'en': 'Dhuhr'}, 'asr': {'en': 'Asr'}, 
                 'maghrib': {'en': 'Maghrib'}, 'isha': {'en': 'Isha'}, 'jummah': {'en': "Jum'ah"}
@@ -118,7 +116,6 @@
                 <p class="text-xs text-on-surface-variant">
                     Ref. API Start for your Home Location: 
                     <span class="font-digital-display text-digital-purple">
-                        {# API keys are capitalized, e.g., Fajr, Dhuhr #}
                         {{ api_times_for_reference.get(p_key.title(), 'N/A') }}
                     </span>
                 </p>
@@ -140,7 +137,6 @@
                 </div>
                 {% endif %}
 
-                {# Fixed Time Inputs #}
                 <div class="settings-fixed-inputs grid grid-cols-1 sm:grid-cols-2 gap-4 {{ 'hidden' if p_key != 'jummah' and not user_settings[p_key ~ '_is_fixed'] }}" id="{{ p_key }}-fixed-settings-inputs">
                     <div>
                         <label for="{{ p_key }}_fixed_azan" class="input-label">{{ 'Azan Time' if p_key != 'jummah' else 'Jummah Azan' }} (HH:MM)</label>
@@ -158,7 +154,6 @@
                     </div>
                 </div>
 
-                {# Offset Inputs (No interactive clock here) #}
                 {% if p_key != 'jummah' %}
                 <div class="settings-offset-inputs grid grid-cols-1 sm:grid-cols-2 gap-4 {{ 'hidden' if user_settings[p_key ~ '_is_fixed'] }}" id="{{ p_key }}-offset-settings-inputs">
                     <div>
@@ -178,20 +173,23 @@
             {% endfor %}
         </div>
 
-        <!-- Profile Settings Tab Content -->
+        <!-- Account Settings Tab Content -->
         <div id="profile-content" role="tabpanel" class="tab-content-panel hidden">
-            <h2 class="text-xl font-semibold text-brand-yellow mb-4">Profile Information</h2>
+            <h2 class="text-xl font-semibold text-on-surface mb-4">Account Information</h2>
             <div>
                 <label for="profile_name" class="input-label">Display Name</label>
                 <input type="text" name="profile.name" id="profile_name" class="input-field" value="{{ user_profile.name or '' }}" placeholder="Your preferred display name">
             </div>
             <div class="mt-4">
                 <p class="input-label">Email (Cannot be changed)</p>
-                <input type="email" class="input-field bg-background border-outline cursor-not-allowed opacity-70" value="{{ user_profile.email }}" readonly disabled>
+                <input type="email" class="input-field bg-surface-variant border-outline cursor-not-allowed opacity-70" value="{{ user_profile.email }}" readonly disabled>
             </div>
              <p class="mt-6 text-sm text-on-surface-variant">
                 (Password change functionality will be added in a future update.)
             </p>
+            <div class="mt-6">
+                <a href="{{ url_for('auth.logout') }}" class="btn-danger text-base px-8 py-3">Logout</a>
+            </div>
         </div>
 
         <div class="pt-6 mt-6 border-t border-outline">
@@ -208,9 +206,9 @@
 {% block scripts %}
     <script>
     const currentUserSettings = {{ user_settings | tojson | safe }};
-    const currentUserProfile = {{ user_profile | tojson | safe }}; // अगर ऊपर वाला function यूज़ किया हो
+    const currentUserProfile = {{ user_profile | tojson | safe }};
     const apiTimesForRef = {{ api_times_for_reference | tojson | safe }};
     const calcMethodChoicesFromFlask = {{ calculation_method_choices | tojson | safe }};
     </script>
-    <script src="{{ url_for('static', filename='js/settings_script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings_script.js') }}?v=1.2"></script>
 {% endblock scripts %}

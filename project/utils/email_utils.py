@@ -9,7 +9,7 @@ def send_otp_email(to_email, otp_code):
     smtp_config = get_smtp_config()  # ⬅️ Dynamic config fetch
 
     subject = "तुम्हारा OTP कोड"
-    body = f"तुम्हारा OTP कोड है: {otp_code}\nयह कोड 10 मिनट तक वैध है।"
+    body = f"Your OTP code is: {otp_code}\nThis code is valid for 10 minutes."
 
     msg = MIMEText(body)
     msg['Subject'] = subject

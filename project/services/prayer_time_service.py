@@ -186,13 +186,13 @@ def get_next_prayer_info_from_service(display_times_today, tomorrow_fajr_display
     Service function to determine the next prayer, time remaining, and countdown states.
     now_datetime_obj is the current datetime passed in for testability and consistency.
     """
-    # ... (यह फंक्शन `app.py - Part 2 of 3` से लगभग वैसा ही रहेगा, 
-    #      बस `parse_time_internal` और `format_time_internal` का उपयोग करेगा,
-    #      और `now_datetime_obj` को पैरामीटर के रूप में लेगा।)
-    #      मैं इसे संक्षिप्तता के लिए यहाँ दोहरा नहीं रहा हूँ, लेकिन यह महत्वपूर्ण है।
-    #      मुख्य बदलाव यह होगा कि यह अब प्रार्थनाओं की सूची बनाता है
-    #      और अगली प्रार्थना का पता लगाता है।
-    #      (यह `app.py` के पिछले वर्शन से कॉपी किया जा सकता है और हेल्पर फंक्शन्स अपडेट किए जा सकते हैं)
+    # ... (This function will be similar to `app.py - Part 2 of 3`,
+    #      it will just use `parse_time_internal` and `format_time_internal`,
+    #      and take `now_datetime_obj` as a parameter.)
+    #      I am not repeating it here for brevity, but it is important.
+    #      The main change will be that it now creates a list of prayers
+    #      and finds the next prayer.
+    #      (This can be copied from the previous version of `app.py` and helper functions can be updated)
 
     # --- BEGIN COPIED AND ADAPTED LOGIC for get_next_prayer_info_from_service ---
     now_time_obj = now_datetime_obj.time()
@@ -282,10 +282,10 @@ def get_current_prayer_period_from_service(api_times_today, api_times_tomorrow, 
     Service function to determine the current prayer *period* based on API start/end times.
     now_datetime_obj is the current datetime.
     """
-    # ... (यह फंक्शन भी `app.py - Part 3 of 3` से लगभग वैसा ही रहेगा,
-    #      बस `parse_time_internal` का उपयोग करेगा और `now_datetime_obj` को पैरामीटर के रूप में लेगा।)
-    #      मैं इसे भी संक्षिप्तता के लिए यहाँ दोहरा नहीं रहा हूँ।
-    #      (यह `app.py` के पिछले वर्शन से कॉपी किया जा सकता है और हेल्पर फंक्शन्स अपडेट किए जा सकते हैं)
+    # ... (This function will also be similar to `app.py - Part 3 of 3`,
+    #      it will just use `parse_time_internal` and take `now_datetime_obj` as a parameter.)
+    #      I am also not repeating it here for brevity.
+    #      (This can be copied from the previous version of `app.py` and helper functions can be updated)
       # --- BEGIN COPIED AND ADAPTED LOGIC for get_current_prayer_period_from_service ---
     if not api_times_today: return {"name": "N/A", "start": "N/A", "end": "N/A"}
     now_time = now_datetime_obj.time()

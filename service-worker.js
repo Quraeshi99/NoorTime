@@ -1,6 +1,6 @@
 // service-worker.js
 
-const CACHE_NAME = 'prayer-times-global-cache-v1'; // Cache का नाम, संस्करण बदलने पर इसे बदलें
+const CACHE_NAME = 'noor-time-cache-v1'; // Cache का नाम, संस्करण बदलने पर इसे बदलें
 const APP_SHELL_FILES = [
   '/', // Main page
   '/login',

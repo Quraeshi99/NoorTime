@@ -17,7 +17,7 @@ module.exports = {
         'on-surface-variant': 'var(--color-on-surface-variant)',
         outline: 'var(--color-outline)',
         error: 'var(--color-error)',
-        // बाकी brand- colors को हटा सकते हो या रख सकते हो अगर ज़रूरत हो तो
+        // You can remove or keep the rest of the brand- colors if needed
       },
       fontFamily: {
         sans: ['var(--font-family-sans)'],

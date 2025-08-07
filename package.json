@@ -1,7 +1,7 @@
 {
-  "name": "prayer-times-global",
+  "name": "noortime",
   "version": "2.0.0",
-  "description": "Global Prayer Times Web Application",
+  "description": "Global NoorTime Web Application",
   "scripts": {
     "build:css": "tailwindcss -i ./project/static/css/src/input.css -o ./project/static/css/dist/style.css --minify",
     "watch:css": "tailwindcss -i ./project/static/css/src/input.css -o ./project/static/css/dist/style.css --watch"

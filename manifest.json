@@ -1,6 +1,6 @@
 {
-  "name": "Prayer Times Global",
-  "short_name": "PrayerTimes",
+  "name": "NoorTime",
+  "short_name": "NoorTime",
   "description": "A global prayer times application with customizable settings.",
   "start_url": "/",
   "display": "fullscreen",

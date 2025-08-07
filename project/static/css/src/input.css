@@ -109,7 +109,7 @@
   .tab-button.active {
     @apply text-primary border-primary;
   }
-  .tab-content-panel { /* पहले .tab-content था */
+  .tab-content-panel { /* Was .tab-content before */
     @apply p-3 sm:p-4 md:p-6 bg-surface rounded-b-md rounded-tr-md shadow-lg border border-t-0 border-outline;
   }
 }

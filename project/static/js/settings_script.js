@@ -5,11 +5,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const saveAllSettingsButton = document.getElementById('saveAllSettingsButton');
     
     const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContentPanels = document.querySelectorAll('.tab-content-panel'); // Updated selector
+    const tabContentPanels = document.querySelectorAll('.tab-content-panel');
     const prayerSettingCards = document.querySelectorAll('.prayer-setting-card');
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-    // --- Helper Functions (from main_script.js, consider a shared utils.js) ---
+    // --- Helper Functions ---
     function parseTimeToTotalMinutes(timeStr) {
         if (!timeStr || !timeStr.includes(':')) return 0;
         const [h, m] = timeStr.split(':').map(Number);
@@ -31,24 +31,40 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // --- Tab Navigation Logic ---
+    function switchTab(tabId) {
+        tabButtons.forEach(tab => {
+            const isSelected = tab.dataset.tab === tabId;
+            tab.classList.toggle('active', isSelected);
+            tab.setAttribute('aria-selected', isSelected);
+        });
+        tabContentPanels.forEach(panel => {
+            panel.classList.toggle('hidden', panel.id !== `${tabId}-content`);
+        });
+    }
+
     if (tabButtons.length > 0 && tabContentPanels.length > 0) {
         tabButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                tabButtons.forEach(btn => {
-                    btn.classList.remove('active');
-                    btn.setAttribute('aria-selected', 'false');
-                });
-                tabContentPanels.forEach(content => content.classList.add('hidden'));
-
-                button.classList.add('active');
-                button.setAttribute('aria-selected', 'true');
-                const tabTargetId = button.getAttribute('data-tab');
-                const targetContent = document.getElementById(`${tabTargetId}-content`);
-                if (targetContent) targetContent.classList.remove('hidden');
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const tabId = button.dataset.tab;
+                switchTab(tabId);
+                history.pushState(null, null, `#${tabId}`);
             });
         });
-        if (!document.querySelector('.tab-button.active') && tabButtons.length > 0) {
-            tabButtons[0].click();
+
+        tabContentPanels.forEach(panel => {
+            panel.addEventListener('click', (event) => {
+                if (event.target.tagName.toLowerCase() === 'a') {
+                    event.stopPropagation();
+                }
+            });
+        });
+
+        const currentHash = window.location.hash.substring(1);
+        if (currentHash) {
+            switchTab(currentHash);
+        } else {
+            switchTab(tabButtons[0].dataset.tab);
         }
     }
 
@@ -194,7 +210,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (category === 'success') flashDiv.classList.add('bg-green-500');
         else if (category === 'danger') flashDiv.classList.add('bg-red-500');
         else if (category === 'info') flashDiv.classList.add('bg-blue-500');
-        else flashDiv.classList.add('bg-brand-box', 'text-on-surface-variant'); // Default/warning
+        else flashDiv.classList.add('bg-primary-container', 'text-on-primary-container'); // Default/warning
         
         flashDiv.textContent = message;
         
