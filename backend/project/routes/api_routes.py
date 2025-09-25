@@ -1,142 +1,210 @@
 # project/routes/api_routes.py
 from project.extensions import limiter
-from flask import Blueprint, jsonify, request, current_app, g
+from flask import jsonify, request, current_app, g
 import datetime
+import json
+from flask_smorest import Blueprint, abort
+from webargs import fields
+from webargs.flaskparser import use_args
 
 from .. import db
 from ..models import User, UserSettings
+from ..schemas import InitialPrayerDataSchema, MessageSchema, GeocodeSchema, AutocompleteSchema, InitialPrayerDataArgsSchema
 from ..services.prayer_time_service import (
     get_api_prayer_times_for_date_from_service,
     calculate_display_times_from_service,
     get_next_prayer_info_from_service,
     get_current_prayer_period_from_service,
-    get_geocoded_location
+    _get_single_prayer_info
 )
-from ..utils.prayer_display_helper import get_prayer_info
-from ..utils.auth import jwt_optional, has_permission # Import new decorators
+from ..services.geocoding_service import get_geocoded_location_with_cache, get_autocomplete_suggestions
+from ..utils.auth import jwt_optional, jwt_required, has_permission
+from ..utils.time_utils import get_prayer_key_for_tomorrow
 
-api_bp = Blueprint('api', __name__)
+api_bp = Blueprint('API', __name__, url_prefix='/api')
 
-def get_request_location_and_method(user=None):
-    """Helper to get location and method from request args, user profile, or app defaults."""
-    req_lat = request.args.get('lat', type=float)
-    req_lon = request.args.get('lon', type=float)
-    req_method = request.args.get('method')
-    req_city = request.args.get('city')
-
-    if req_lat is not None and req_lon is not None and req_method is not None:
-        return req_lat, req_lon, req_method, req_city or "Custom Location"
-    
-    if user and user.default_latitude and user.default_longitude and user.default_calculation_method:
-        return user.default_latitude, user.default_longitude, user.default_calculation_method, user.default_city_name or "Saved Location"
-
+def get_prayer_settings_from_user(user, args):
+    """
+    Determines the correct prayer time settings (location, method, etc.) based on a hierarchy:
+    1. A followed Masjid's settings.
+    2. A custom location search from the user.
+    3. The user's saved personal settings.
+    4. The application's default settings.
+    """
+    # Default values from app config
     lat = float(current_app.config.get('DEFAULT_LATITUDE'))
     lon = float(current_app.config.get('DEFAULT_LONGITUDE'))
-    method_key = current_app.config.get('DEFAULT_CALCULATION_METHOD')
+    method_id = int(current_app.config.get('DEFAULT_CALCULATION_METHOD_ID', 3)) # Default to 3 (MWL)
+    asr_id = 0 # Default to 0 (Standard)
+    high_lat_id = 1 # Default to 1 (Middle of the Night)
     city_name = "Default Location"
-    return lat, lon, method_key, city_name
+    source = "app_default"
+
+    # 1. Logged-in user logic
+    if user:
+        user_settings = user.settings if user.settings else UserSettings() # Ensure user_settings object exists
+
+        # Priority 1: Followed Masjid
+        default_masjid_follow = user.default_masjid_follow
+        if default_masjid_follow:
+            masjid = default_masjid_follow.masjid
+            masjid_settings = masjid.settings if masjid.settings else UserSettings()
+            return (
+                masjid.default_latitude,
+                masjid.default_longitude,
+                int(masjid.default_calculation_method_id),
+                int(masjid_settings.asr_juristic_id),
+                int(masjid_settings.high_latitude_method_id),
+                masjid.default_city_name or masjid.name,
+                "followed_masjid"
+            )
+
+        # Priority 2: Custom Location Search (using user's own settings)
+        req_lat = args.get('lat')
+        req_lon = args.get('lon')
+        if req_lat is not None and req_lon is not None:
+            # IMPORTANT: Only apply high-latitude method if the *searched* location is in a high latitude.
+            # The user's own location is irrelevant for this calculation.
+            high_lat_id_to_use = int(user_settings.high_latitude_method_id or high_lat_id) if req_lat > 48.0 else 0
+
+            return (
+                req_lat,
+                req_lon,
+                int(user.default_calculation_method_id or method_id),
+                int(user_settings.asr_juristic_id or asr_id),
+                high_lat_id_to_use,
+                args.get('city', "Custom Location"),
+                "custom_location_with_user_settings"
+            )
+
+        # Priority 3: User's Saved Personal Settings
+        if user.default_latitude and user.default_longitude and user.default_calculation_method_id is not None:
+            return (
+                user.default_latitude,
+                user.default_longitude,
+                int(user.default_calculation_method_id),
+                int(user_settings.asr_juristic_id or asr_id),
+                int(user_settings.high_latitude_method_id or high_lat_id),
+                user.default_city_name,
+                "user_personal_settings"
+            )
+
+    # 4. Guest user or user with no settings (custom location search)
+    else:
+        req_lat = args.get('lat')
+        req_lon = args.get('lon')
+        if req_lat is not None and req_lon is not None:
+            # For guests, we can't use saved settings, so we take method from args or use app default
+            guest_method_id = args.get('method', method_id)
+            guest_asr_id = args.get('school', asr_id)
+            guest_high_lat_id = args.get('latitudeAdjustmentMethod', high_lat_id)
+            return (
+                req_lat, req_lon, int(guest_method_id), int(guest_asr_id), int(guest_high_lat_id),
+                args.get('city', "Custom Location"),
+                "guest_custom_location"
+            )
+
+    # Fallback to app default for all other cases
+    return lat, lon, method_id, asr_id, high_lat_id, city_name, source
 
 @api_bp.route('/initial_prayer_data')
 @jwt_optional
-def initial_prayer_data():
-    """Public endpoint for prayer data, enhanced for authenticated users."""
-    try:
-        user = g.user if hasattr(g, 'user') else None
-        lat, lon, method_key, city_name = get_request_location_and_method(user)
-        
-        user_prayer_settings_obj = user.settings if user and user.settings else UserSettings()
-        time_format_pref = user.time_format_preference if user else '12h'
-        is_authenticated = True if user else False
-
-        today_date = datetime.date.today()
-        tomorrow_date = today_date + datetime.timedelta(days=1)
-
-        api_times_today = get_api_prayer_times_for_date_from_service(today_date, lat, lon, method_key)
-        api_times_tomorrow = get_api_prayer_times_for_date_from_service(tomorrow_date, lat, lon, method_key)
-
-        if not api_times_today:
-            return jsonify({"error": "Could not fetch prayer times from external API."}), 503
-        
-        display_times = calculate_display_times_from_service(user_prayer_settings_obj, api_times_today, current_app.config)
-        tomorrow_fajr_display = get_prayer_info("Fajr", api_times_tomorrow, user_prayer_settings_obj)
-        
-        return jsonify({
-            "currentLocationName": city_name,
-            "prayerTimes": display_times,
-            "dateInfo": {
-                "gregorian": f"{api_times_today.get('gregorian_date')}, {api_times_today.get('gregorian_weekday')}",
-                "hijri": f"{api_times_today.get('hijri_date')} ({api_times_today.get('hijri_month_en')} {api_times_today.get('hijri_year')} AH)"
-            },
-            "tomorrowFajrDisplay": tomorrow_fajr_display,
-            "userPreferences": {
-                "timeFormat": time_format_pref,
-                "calculationMethod": method_key,
-                "homeLatitude": lat,
-                "homeLongitude": lon,
-            },
-            "isUserAuthenticated": is_authenticated
-        })
-    
-    except Exception as e:
-        current_app.logger.error(f"Error in initial_prayer_data: {str(e)}", exc_info=True)
-        return jsonify({"error": "Internal server error occurred."}), 500
-
-@api_bp.route('/client/settings', methods=['POST'])
-@has_permission('can_update_own_settings') # Now requires specific permission
-def update_client_settings():
+@api_bp.arguments(InitialPrayerDataArgsSchema, location='query')
+#@api_bp.response(200, InitialPrayerDataSchema, description="Prayer data retrieved successfully.")
+@api_bp.response(503, MessageSchema, description="Service Unavailable - Could not fetch data from the external prayer time API.")
+@api_bp.response(500, MessageSchema, description="Internal Server Error.")
+def initial_prayer_data(args):
     """
-    Allows an authenticated Client to update their personal settings.
+    Get all initial data for the prayer times screen.
+    This is the main endpoint. It provides personalized data for logged-in users,
+    especially if they are following a default Masjid.
     """
-    user = g.user # g.user is set by the @jwt_required decorator
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-
-    # Update fields in the User (Client) model
-    user_fields = ['name', 'default_latitude', 'default_longitude', 'default_city_name', 'default_calculation_method', 'time_format_preference']
-    for field in user_fields:
-        if field in data:
-            setattr(user, field, data[field])
-
-    # Update fields in the UserSettings model
-    if 'settings' in data and isinstance(data['settings'], dict):
-        if not user.settings:
-            user.settings = UserSettings(user_id=user.id)
-            db.session.add(user.settings)
-        
-        settings_fields = [
-            'fajr_is_fixed', 'fajr_fixed_azan', 'fajr_fixed_jamaat', 'fajr_azan_offset', 'fajr_jamaat_offset',
-            'dhuhr_is_fixed', 'dhuhr_fixed_azan', 'dhuhr_fixed_jamaat', 'dhuhr_azan_offset', 'dhuhr_jamaat_offset',
-            'asr_is_fixed', 'asr_fixed_azan', 'asr_fixed_jamaat', 'asr_azan_offset', 'asr_jamaat_offset',
-            'maghrib_is_fixed', 'maghrib_fixed_azan', 'maghrib_fixed_jamaat', 'maghrib_azan_offset', 'maghrib_jamaat_offset',
-            'isha_is_fixed', 'isha_fixed_azan', 'isha_fixed_jamaat', 'isha_azan_offset', 'isha_jamaat_offset',
-            'jummah_azan_time', 'jummah_khutbah_start_time', 'jummah_jamaat_time'
-        ]
-        for field in data['settings']:
-            if field in data['settings']:
-                setattr(user.settings, field, data['settings'][field])
-
-    try:
-        db.session.commit()
-        return jsonify({"message": "Settings updated successfully."}), 200
-    except Exception as e:
-        current_app.logger.error(f"Error updating settings for user {user.email}: {e}", exc_info=True)
-        return jsonify({"error": "Failed to update settings due to a server error."}), 500
-
-@api_bp.route('/geocode', methods=['GET'])
-@limiter.limit("50 per hour")
-def geocode_city():
-    # This remains a public endpoint
-    city_name = request.args.get('city')
-    if not city_name or len(city_name.strip()) < 2:
-        return jsonify({"error": "Valid city name parameter is required"}), 400
+    user = g.user if hasattr(g, 'user') else None
+    is_authenticated = True if user else False
     
-    try:
-        location_data = get_geocoded_location(city_name.strip(), current_app.config.get('OPENWEATHERMAP_API_KEY'))
-        if location_data and "error" not in location_data:
-            return jsonify(location_data)
-        else:
-            return jsonify({"error": location_data.get("error", "Failed to geocode location")}), 404
-    except Exception as e:
-        current_app.logger.error(f"Error in geocode_city: {str(e)}", exc_info=True)
-        return jsonify({"error": "Geocoding service temporarily unavailable"}), 503
+    # --- Determine the source of truth for prayer settings ---
+    user_prayer_settings_obj = user.settings if user and user.settings else UserSettings()
+    time_format_pref = user.time_format_preference if user else '12h'
+
+    lat, lon, method_id, asr_id, high_lat_id, city_name, settings_source = get_prayer_settings_from_user(user, args)
+
+    # If settings came from a followed masjid, get additional info
+    is_following_default_masjid = (settings_source == "followed_masjid")
+    default_masjid_info = user.default_masjid_follow.masjid if is_following_default_masjid else None
+    announcements = default_masjid_info.announcements if default_masjid_info else []
+
+    # --- Fetch and Calculate Prayer Times (Core Logic) ---
+    today_date = datetime.date.today()
+    now_datetime = datetime.datetime.now()
+    tomorrow_date = today_date + datetime.timedelta(days=1)
+    day_after_tomorrow_date = today_date + datetime.timedelta(days=2)
+
+    api_day_today = get_api_prayer_times_for_date_from_service(today_date, lat, lon, method_id, asr_id, high_lat_id)
+    api_day_tomorrow = get_api_prayer_times_for_date_from_service(tomorrow_date, lat, lon, method_id, asr_id, high_lat_id)
+    api_day_day_after_tomorrow = get_api_prayer_times_for_date_from_service(day_after_tomorrow_date, lat, lon, method_id, asr_id, high_lat_id)
+
+    if not api_day_today or not api_day_tomorrow or not api_day_day_after_tomorrow:
+        abort(503, message="Could not fetch prayer times from the prayer time service.")
+    
+    api_times_today = api_day_today.get('timings', {})
+    api_times_tomorrow = api_day_tomorrow.get('timings', {})
+    api_times_day_after_tomorrow = api_day_day_after_tomorrow.get('timings', {})
+
+    display_times, needs_db_update = calculate_display_times_from_service(
+        user_prayer_settings_obj, 
+        api_times_today, 
+        api_times_tomorrow, 
+        current_app.config
+    )
+    
+    if needs_db_update and user and not is_following_default_masjid:
+        try:
+            user.settings.last_api_times_for_threshold = json.dumps(api_times_today)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+
+    last_api_times = json.loads(user_prayer_settings_obj.last_api_times_for_threshold) if user_prayer_settings_obj and user_prayer_settings_obj.last_api_times_for_threshold else {}
+
+    current_period_info = get_current_prayer_period_from_service(api_times_today, api_times_tomorrow, now_datetime)
+    current_prayer_name = current_period_info.get("name", "ISHA").upper()
+    prayer_to_show_for_tomorrow_key = get_prayer_key_for_tomorrow(current_prayer_name, today_date)
+
+    next_day_prayer_display = _get_single_prayer_info(
+        prayer_to_show_for_tomorrow_key,
+        api_times_tomorrow,
+        user_prayer_settings_obj,
+        api_times_day_after_tomorrow,
+        last_api_times
+    )
+    
+    if next_day_prayer_display:
+        next_day_prayer_display['name'] = prayer_to_show_for_tomorrow_key
+
+    date_info = api_day_today.get('date', {})
+    gregorian_info = date_info.get('gregorian', {})
+    hijri_info = date_info.get('hijri', {})
+
+    response_data = {
+        "currentLocationName": city_name,
+        "currentPrayerPeriod": current_period_info,
+        "prayerTimes": display_times,
+        "dateInfo": {
+            "gregorian": f"{gregorian_info.get('date')}, {gregorian_info.get('weekday', {}).get('en')}",
+            "hijri": f"{hijri_info.get('date')} ({hijri_info.get('month', {}).get('en')} {hijri_info.get('year')} AH)"
+        },
+        "nextDayPrayerDisplay": next_day_prayer_display,
+        "userPreferences": {
+            "timeFormat": time_format_pref,
+            "calculationMethod": method_key,
+            "homeLatitude": lat,
+            "homeLongitude": lon,
+        },
+        "isUserAuthenticated": is_authenticated,
+        # --- New community feature fields ---
+        "is_following_default_masjid": is_following_default_masjid,
+        "default_masjid_info": default_masjid_info,
+        "announcements": announcements
+    }
+    current_app.logger.info(f"Response data: {response_data}")
+    return response_data

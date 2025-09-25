@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify, abort
+from flask_smorest import Blueprint, abort
+from flask import request, jsonify
 from flask_login import login_required, current_user
 from flask_mail import Message
 from .. import mail

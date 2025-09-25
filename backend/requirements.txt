@@ -16,3 +16,15 @@ pytest
 gunicorn
 PyJWT
 cryptography
+pytest-mock
+freezegun
+flask-marshmallow
+marshmallow-sqlalchemy
+redis
+Flask-Caching
+flask-smorest
+geopy
+ImageHash
+google-cloud-vision
+Pillow
+Flask-Migrate

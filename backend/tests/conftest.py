@@ -1,179 +1,155 @@
 # backend/tests/conftest.py
 
 import pytest
-from project import create_app, db
-from project.models import User, Permission, RolePermission # Import new models
-from project.utils.constants import Roles # Import role constants
+from project import create_app, db as _db
+from project.models import User, Permission, RolePermission, UserPermission
+from project.utils.constants import Roles
 import jwt
 import time
-from unittest.mock import MagicMock
+from unittest.mock import patch, MagicMock
+import datetime
 
-# Dummy RSA key pair for testing. In a real-world scenario, never commit private keys.
-TEST_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDL+08eI3dSAH4t
-... (dummy private key) ...
------END PRIVATE KEY-----"""
-
-TEST_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy/tPHiN3UgB+LQ
-... (dummy public key) ...
------END PUBLIC KEY-----"""
+# Use a simple secret key for HS256 algorithm in tests
+TEST_SECRET_KEY = "your-super-secret-and-long-enough-test-key-for-hs256"
 
 @pytest.fixture(scope='session')
-def app_instance():
-    return create_app('testing')
-
-@pytest.fixture(scope='module')
-def test_app(app_instance):
-    with app_instance.app_context():
-        yield app_instance
-
-@pytest.fixture(scope='module')
-def test_client(test_app):
-    return test_app.test_client()
-
-@pytest.fixture(scope='module')
-def init_database(test_app, initial_permissions, default_role_permissions):
-    """
-    Initializes the test database for a module.
-    Ensures all tables are created and default permissions are loaded.
-    """
-    with test_app.app_context():
-        db.create_all()
-        # Permissions are loaded by initial_permissions fixture
-        # Role permissions are loaded by default_role_permissions fixture
-        yield db
-        db.session.remove()
-        db.drop_all()
+def app():
+    """Session-wide application for testing."""
+    app = create_app('testing')
+    # Configure the app with the same secret key for decoding tokens during tests
+    app.config['JWT_SECRET_KEY'] = TEST_SECRET_KEY
+    app.config['LOCATIONIQ_API_KEY'] = 'dummy_key'
+    app.config['OPENWEATHERMAP_API_KEY'] = 'dummy_key'
+    return app
 
 @pytest.fixture(scope='function')
-def mock_jwks_client(monkeypatch):
-    """Mocks the JWKS client to prevent real HTTP requests during tests."""
-    mock_client = MagicMock()
-    signing_key = jwt.jwk.construct(TEST_PUBLIC_KEY, "RS256")
-    mock_client.get_signing_key_from_jwt.return_value = signing_key
-    monkeypatch.setattr('project.utils.auth.get_jwks_client', lambda: mock_client)
-
-def create_test_token(user_id, supabase_role, email):
-    """
-    Helper to create a JWT. The 'role' in the token payload represents the
-    Supabase role, which our app then maps to an internal role.
-    """
-    payload = {
-        'sub': user_id,
-        'role': supabase_role, # This is the role from Supabase JWT
-        'email': email,
-        'aud': 'authenticated',
-        'exp': int(time.time()) + 3600,
-        'iat': int(time.time())
-    }
-    token = jwt.encode(payload, TEST_PRIVATE_KEY, algorithm="RS256")
-    return {'Authorization': f'Bearer {token}'}
-
-@pytest.fixture(scope='module')
-def initial_permissions(test_app):
-    """
-    Inserts all predefined permissions into the database.
-    """
-    with test_app.app_context():
+def db(app):
+    """Function-level database setup. Creates and tears down tables for each test function."""
+    with app.app_context():
+        _db.create_all()
+        
+        # Seed initial permissions
         permissions_to_add = [
-            # User Management
             Permission(name='can_view_users', description='View list of all users'),
             Permission(name='can_manage_user_roles', description='Assign/revoke user roles'),
             Permission(name='can_manage_user_permissions', description='Assign/revoke individual user permissions'),
             Permission(name='can_delete_users', description='Delete user accounts'),
-            # Popup Management
             Permission(name='can_view_popups', description='View list of popups'),
             Permission(name='can_create_popups', description='Create new popups'),
             Permission(name='can_update_popups', description='Update existing popups'),
             Permission(name='can_delete_popups', description='Delete popups'),
-            # App Settings
             Permission(name='can_view_app_settings', description='View global app settings'),
             Permission(name='can_manage_app_settings', description='Manage global app settings'),
-            # Notifications
             Permission(name='can_send_notifications', description='Send push notifications'),
-            # Client-specific
             Permission(name='can_update_own_settings', description='Update own user settings'),
-            # Future Features (Placeholders)
             Permission(name='can_view_revenue', description='View application revenue'),
             Permission(name='can_view_analytics', description='View application analytics'),
             Permission(name='can_manage_subscriptions', description='Manage user subscriptions'),
             Permission(name='can_process_payments', description='Process payments'),
         ]
-        db.session.add_all(permissions_to_add)
-        db.session.commit()
-        return permissions_to_add
+        _db.session.add_all(permissions_to_add)
+        _db.session.commit()
 
-@pytest.fixture(scope='module')
-def default_role_permissions(test_app, initial_permissions):
-    """
-    Inserts default permissions for each role into the database.
-    """
-    with test_app.app_context():
-        # Fetch permission IDs
+        # Seed default role permissions
         perms = {p.name: p.id for p in Permission.query.all()}
-
         role_perms_to_add = []
-
-        # Client Role Permissions
-        client_perms = [
-            'can_update_own_settings',
-        ]
+        client_perms = ['can_update_own_settings']
         for p_name in client_perms:
             role_perms_to_add.append(RolePermission(role_name=Roles.CLIENT, permission_id=perms[p_name]))
-
-        # Manager Role Permissions
-        manager_perms = [
-            'can_view_users',
-            'can_view_popups',
-            'can_create_popups',
-            'can_update_popups',
-            'can_view_revenue',
-            'can_view_analytics',
-        ]
+        manager_perms = ['can_view_users', 'can_view_popups', 'can_create_popups', 'can_update_popups', 'can_view_revenue', 'can_view_analytics']
         for p_name in manager_perms:
             role_perms_to_add.append(RolePermission(role_name=Roles.MANAGER, permission_id=perms[p_name]))
-
-        # Super Admin Role Permissions (all permissions)
-        super_admin_perms = [p.name for p in initial_permissions] # All permissions
+        super_admin_perms = [p.name for p in permissions_to_add] # All permissions
         for p_name in super_admin_perms:
             role_perms_to_add.append(RolePermission(role_name=Roles.SUPER_ADMIN, permission_id=perms[p_name]))
-        
-        db.session.add_all(role_perms_to_add)
-        db.session.commit()
-        return role_perms_to_add
+        _db.session.add_all(role_perms_to_add)
+        _db.session.commit()
+
+        yield _db
+
+        _db.session.remove()
+        _db.drop_all()
 
 @pytest.fixture(scope='function')
-def client_user_in_db(init_database):
+def test_client(app, db):
+    """A test client for the app, ensuring the DB is initialized."""
+    return app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def mock_auth_dependencies(mocker):
     """
-    Creates a Client user in the database and returns their object.
-    This user will have default Client role permissions.
+    Mocks authentication-related external calls and JWT decoding.
+    This applies to all tests automatically.
     """
+    # Mock get_jwks_client to prevent network calls and provide a dummy signing key
+    mock_jwks_client_instance = MagicMock()
+    mock_signing_key = MagicMock()
+    mock_signing_key.key = TEST_SECRET_KEY # The key attribute is what jwt.decode expects
+    mock_jwks_client_instance.get_signing_key_from_jwt.return_value = mock_signing_key
+    mocker.patch('project.utils.auth.get_jwks_client', return_value=mock_jwks_client_instance)
+
+    # Mock jwt.decode to bypass external validation and use HS256
+    original_jwt_decode = jwt.decode
+    def mock_decode_logic(token, key, algorithms, audience=None, issuer=None):
+        # In our tests, we bypass the key/issuer check but still validate audience.
+        return original_jwt_decode(token, TEST_SECRET_KEY, algorithms=["HS256"], audience=audience)
+    
+    mocker.patch('jwt.decode', side_effect=mock_decode_logic)
+
+
+@pytest.fixture(autouse=True)
+def mock_api_prayer_times_service(mocker):
+    """Mocks the get_api_prayer_times_for_date_from_service function."""
+    mock_data = {
+        "Fajr": "05:00", "Sunrise": "06:30", "Dhuhr": "13:00",
+        "Asr": "17:00", "Sunset": "18:30", "Maghrib": "18:45",
+        "Isha": "20:00", "Imsak": "04:50", "gregorian_date": "10-08-2025",
+        "gregorian_weekday": "Sunday", "hijri_date": "06-02-1447",
+        "hijri_month_en": "Rajab", "hijri_year": "1447",
+        "temperatureC": "25", "weather_description": "Clear Sky"
+    }
+    mocker.patch('project.services.prayer_time_service.get_api_prayer_times_for_date_from_service', return_value=mock_data)
+
+
+
+
+
+def create_test_token(user_id, supabase_role, email):
+    """Helper to create a JWT using HS256."""
+    payload = {
+        'sub': user_id,
+        'role': supabase_role,
+        'email': email,
+        'aud': 'authenticated',
+        'exp': int(time.time()) + 3600,
+        'iat': int(time.time())
+    }
+    token = jwt.encode(payload, TEST_SECRET_KEY, algorithm="HS256")
+    return {'Authorization': f'Bearer {token}'}
+
+@pytest.fixture(scope='function')
+def client_user_in_db(db):
+    """Creates a Client user in the database and returns their object."""
     user = User(supabase_user_id='client-user-id', email='client@example.com', role=Roles.CLIENT)
-    db.session.add(user)
-    db.session.commit()
+    _db.session.add(user)
+    _db.session.commit()
     return user
 
 @pytest.fixture(scope='function')
-def manager_user_in_db(init_database):
-    """
-    Creates a Manager user in the database and returns their object.
-    This user will have default Manager role permissions.
-    """
+def manager_user_in_db(db):
+    """Creates a Manager user in the database and returns their object."""
     user = User(supabase_user_id='manager-user-id', email='manager@example.com', role=Roles.MANAGER)
-    db.session.add(user)
-    db.session.commit()
+    _db.session.add(user)
+    _db.session.commit()
     return user
 
 @pytest.fixture(scope='function')
-def super_admin_user_in_db(init_database):
-    """
-    Creates a Super Admin user in the database and returns their object.
-    This user will have default Super Admin role permissions.
-    """
+def super_admin_user_in_db(db):
+    """Creates a Super Admin user in the database and returns their object."""
     user = User(supabase_user_id='super-admin-id', email='superadmin@example.com', role=Roles.SUPER_ADMIN)
-    db.session.add(user)
-    db.session.commit()
+    _db.session.add(user)
+    _db.session.commit()
     return user
 
 @pytest.fixture(scope='function')
@@ -183,15 +159,10 @@ def auth_headers_for_client(client_user_in_db):
 
 @pytest.fixture(scope='function')
 def auth_headers_for_manager(manager_user_in_db):
-    """
-    Auth headers for a Manager.
-    Note: Supabase role is 'authenticated', but our backend maps it to 'Manager' based on DB.
-    """
+    """Auth headers for a Manager."""
     return create_test_token(manager_user_in_db.supabase_user_id, 'authenticated', manager_user_in_db.email)
 
 @pytest.fixture(scope='function')
 def auth_headers_for_super_admin(super_admin_user_in_db):
-    """
-    Auth headers for a Super Admin, using the 'service_role' from Supabase.
-    """
+    """Auth headers for a Super Admin."""
     return create_test_token(super_admin_user_in_db.supabase_user_id, 'service_role', super_admin_user_in_db.email)

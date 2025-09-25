@@ -1,0 +1,26 @@
+{
+  "notes": "This file maps ISO 3166-1 alpha-2 country codes to their most common prayer time calculation method IDs from the AlAdhan API. This is used for the 'Automatic' setting to provide a smart default for new users.",
+  "default_method_id": 3,
+  "country_map": {
+    "SA": 4,  
+    "US": 2,
+    "CA": 2,
+    "GB": 3,
+    "FR": 12,
+    "DE": 3,
+    "AU": 3,
+    "PK": 1,
+    "IN": 1,
+    "BD": 1,
+    "EG": 5,
+    "NG": 5,
+    "TR": 13,
+    "RU": 14,
+    "SG": 11,
+    "ID": 20,
+    "MY": 17,
+    "DZ": 19,
+    "TN": 18,
+    "MA": 22
+  }
+}

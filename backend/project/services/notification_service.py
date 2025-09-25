@@ -1,49 +1,77 @@
-# project/services/notification_service.py
+"""
+Notification Service
+--------------------
+This service is responsible for sending all user-facing notifications, starting
+with emails for the Masjid Application process.
+"""
 
-from flask import current_app
+from flask_mail import Message
+from .. import mail
+from ..models import MasjidApplication
 
-class NotificationService:
+def send_approval_email(application: MasjidApplication):
     """
-    A service class to handle sending push notifications.
-    This is currently a mock service. To implement a real service, you would integrate
-    a provider like Firebase Cloud Messaging (FCM), OneSignal, or another provider here.
+    Sends an email to the user informing them that their application has been approved.
+
+    Args:
+        application: The approved MasjidApplication object.
     """
+    if not application.applicant.email:
+        return
 
-    def send_push_notification(self, message: str, recipient_type: str = 'all', recipient_value=None):
-        """
-        Sends a push notification.
+    applicant = application.applicant
+    subject = "Congratulations! Your Masjid Application has been Approved"
+    body = f"""Dear {applicant.name},
 
-        Args:
-            message (str): The content of the notification message.
-            recipient_type (str): The type of audience ('all', 'user_id', 'email').
-            recipient_value: The specific user ID or email if not sending to 'all'.
+Congratulations! Your application to register '{application.official_name}' as a Masjid on NoorTime has been approved.
 
-        Returns:
-            dict: A dictionary containing the status and details of the sent notification.
-        """
-        # This is a mock implementation. It logs the action instead of sending a real notification.
-        # TODO: Replace this with a real push notification provider integration.
-        
-        log_message = f"[MOCK PUSH NOTIFICATION] Sending notification: '{message}' to {recipient_type}"
-        if recipient_value:
-            log_message += f" ({recipient_value})"
-        
-        current_app.logger.info(log_message)
+Your unique Masjid Code is: {applicant.masjid_code}
 
-        # You would typically get a message ID or status from your provider.
-        # For example: result = fcm.send(...)
+You can now log in to your account to manage your Masjid's prayer times and post announcements for your followers.
 
-        # Returning a mock response that mimics a real service response.
-        response = {
-            "status": "sent_mock",
-            "details": {
-                "message": message,
-                "recipient_type": recipient_type,
-                "recipient_value": recipient_value
-            }
-        }
-        
-        return response
+Thank you for being a part of the NoorTime community.
 
-# You can instantiate the service here to be imported elsewhere
-notification_service = NotificationService()
+Sincerely,
+The NoorTime Team"""
+
+    msg = Message(subject, recipients=[applicant.email], body=body)
+    
+    try:
+        mail.send(msg)
+    except Exception as e:
+        # In a production app, you would log this error extensively.
+        print(f"Error sending approval email to {applicant.email}: {e}")
+
+def send_rejection_email(application: MasjidApplication):
+    """
+    Sends an email to the user informing them that their application has been rejected.
+
+    Args:
+        application: The rejected MasjidApplication object.
+    """
+    if not application.applicant.email:
+        return
+
+    applicant = application.applicant
+    subject = "Update on Your NoorTime Masjid Application"
+    reason = application.rejection_reason or "the information provided could not be verified at this time."
+    body = f"""Dear {applicant.name},
+
+Thank you for your interest in registering '{application.official_name}' as a Masjid on NoorTime.
+
+After careful review, we were unable to approve your application at this time. 
+Reason for rejection: {reason}
+
+This could be due to several factors, such as an unverified address, duplicate images, or incomplete information. Please review your submission and feel free to re-apply with corrected information.
+
+If you believe this is an error, please contact our support team.
+
+Sincerely,
+The NoorTime Team"""
+
+    msg = Message(subject, recipients=[applicant.email], body=body)
+    
+    try:
+        mail.send(msg)
+    except Exception as e:
+        print(f"Error sending rejection email to {applicant.email}: {e}")

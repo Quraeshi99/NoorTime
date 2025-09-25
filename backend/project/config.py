@@ -10,7 +10,7 @@ else:
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'a_default_fallback_secret_key_for_development_only'
+    SECRET_KEY = 'a_very_long_and_random_secret_key_for_noortime_project'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     WTF_CSRF_ENABLED = True # Enabled by default, can be disabled in testing
     LOG_LEVEL = "INFO"
@@ -25,9 +25,21 @@ class Config:
     PRAYER_API_ADAPTER = os.environ.get('PRAYER_API_ADAPTER') or "AlAdhanAdapter"
     PRAYER_API_BASE_URL = os.environ.get('PRAYER_API_BASE_URL') or "http://api.aladhan.com/v1"
     PRAYER_API_KEY = os.environ.get('PRAYER_API_KEY')
+    PRAYER_ZONE_GRID_SIZE = float(os.environ.get("PRAYER_ZONE_GRID_SIZE", 0.2))
 
     # Geocoding API Configuration
+    GEOCODING_PROVIDER = os.environ.get('GEOCODING_PROVIDER', 'LocationIQ') # Can be 'LocationIQ' or 'OpenWeatherMap'
     OPENWEATHERMAP_API_KEY = os.environ.get('OPENWEATHERMAP_API_KEY')
+    LOCATIONIQ_API_KEY = os.environ.get('LOCATIONIQ_API_KEY')
+
+    # Yearly Cache Management Configuration
+    # Defines the start date for the "grace period" during which next year's calendars are pre-fetched.
+    CACHE_GRACE_PERIOD_START_MONTH = int(os.environ.get('CACHE_GRACE_PERIOD_START_MONTH', 12)) # December
+    CACHE_GRACE_PERIOD_START_DAY = int(os.environ.get('CACHE_GRACE_PERIOD_START_DAY', 15))
+
+    # Defines the date when the cleanup script for old calendars should run.
+    CACHE_CLEANUP_MONTH = int(os.environ.get('CACHE_CLEANUP_MONTH', 1)) # January
+    CACHE_CLEANUP_DAY = int(os.environ.get('CACHE_CLEANUP_DAY', 3))
 
     # Default Location and Calculation Method
     DEFAULT_LATITUDE = os.environ.get('DEFAULT_LATITUDE', "19.2183")
@@ -74,18 +86,16 @@ class ProductionConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
-    # Use a separate PostgreSQL database for testing, defined by TEST_DATABASE_URL
-    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL')
+    # Use an in-memory SQLite database for tests to ensure speed and isolation.
+    # This avoids network issues and dependency on external databases.
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     RATELIMIT_ENABLED = False # Disable rate limiting for tests
-
-    # Ensure the test database URL is set, otherwise fail fast
-    if not SQLALCHEMY_DATABASE_URI:
-        raise ValueError("CRITICAL: TEST_DATABASE_URL is not set. Testing cannot proceed.")
+    SECRET_KEY = 'test-secret-key'
 
 config_by_name = {
     'development': DevelopmentConfig,
-    'production': ProductionConfig,
+    #        'production': ProductionConfig,
     'testing': TestingConfig,
     'default': DevelopmentConfig
 }

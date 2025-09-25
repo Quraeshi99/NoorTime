@@ -39,6 +39,19 @@ class BasePrayerTimeAdapter(ABC):
         pass
 
     @abstractmethod
+    def fetch_yearly_calendar(self, year, latitude, longitude, calculation_method_key):
+        """
+        Fetches a full year's prayer time calendar from the API.
+
+        :param year: The integer year for the calendar.
+        :param latitude: The float latitude.
+        :param longitude: The float longitude.
+        :param calculation_method_key: The user-friendly key for the calculation method.
+        :return: A list of daily prayer time data for the entire year, or None if an error occurs.
+        """
+        pass
+
+    @abstractmethod
     def map_calculation_method_key(self, user_selected_method_key):
         """
         Maps a user-friendly calculation method key (e.g., "Hanafi", "Shafii_Standard")

@@ -2,37 +2,36 @@
 
 import json
 import pytest
-from project.models import User, Permission, RolePermission, UserPermission
+from project.models import User, Permission, RolePermission, UserPermission, db
 from project.utils.constants import Roles
 
 # --- Unauthenticated Tests ---
 
-def test_get_users_unauthenticated(test_client, init_database):
+def test_get_users_unauthenticated(test_client):
     response = test_client.get('/api/management/users')
     assert response.status_code == 401
 
 # --- Permission Tests for Different Roles ---
 
 @pytest.fixture(scope='function')
-def setup_users_and_permissions(init_database, client_user_in_db, manager_user_in_db, super_admin_user_in_db):
+def setup_users_and_permissions(db, client_user_in_db, manager_user_in_db, super_admin_user_in_db):
     """
     Ensures users are in DB and returns them.
-    Permissions are handled by module-scoped fixtures.
+    Permissions are handled by module-scoped fixtures from conftest.
     """
     return client_user_in_db, manager_user_in_db, super_admin_user_in_db
 
 # --- Test can_view_users permission ---
 
-def test_get_users_as_client_without_permission(test_client, setup_users_and_permissions, auth_headers_for_client, mock_jwks_client):
+def test_get_users_as_client_without_permission(test_client, setup_users_and_permissions, auth_headers_for_client):
     """
     Client should not be able to view users by default.
     """
-    # Client role does not have 'can_view_users' by default
     response = test_client.get('/api/management/users', headers=auth_headers_for_client)
     assert response.status_code == 403
     assert json.loads(response.data.decode('utf-8'))['error'] == "Permission 'can_view_users' required."
 
-def test_get_users_as_manager_with_permission(test_client, setup_users_and_permissions, auth_headers_for_manager, mock_jwks_client):
+def test_get_users_as_manager_with_permission(test_client, setup_users_and_permissions, auth_headers_for_manager):
     """
     Manager should be able to view users by default.
     """
@@ -40,7 +39,7 @@ def test_get_users_as_manager_with_permission(test_client, setup_users_and_permi
     assert response.status_code == 200
     assert len(json.loads(response.data.decode('utf-8'))) == 3
 
-def test_get_users_as_super_admin_with_permission(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_get_users_as_super_admin_with_permission(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to view users by default.
     """
@@ -50,7 +49,7 @@ def test_get_users_as_super_admin_with_permission(test_client, setup_users_and_p
 
 # --- Test can_manage_user_roles permission ---
 
-def test_assign_role_as_manager_without_permission(test_client, setup_users_and_permissions, auth_headers_for_manager, mock_jwks_client):
+def test_assign_role_as_manager_without_permission(test_client, setup_users_and_permissions, auth_headers_for_manager):
     """
     Manager should not be able to assign roles by default.
     """
@@ -61,7 +60,7 @@ def test_assign_role_as_manager_without_permission(test_client, setup_users_and_
     assert response.status_code == 403
     assert json.loads(response.data.decode('utf-8'))['error'] == "Permission 'can_manage_user_roles' required."
 
-def test_assign_role_as_super_admin_with_permission(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_assign_role_as_super_admin_with_permission(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to assign roles by default.
     """
@@ -79,7 +78,7 @@ def test_assign_role_as_super_admin_with_permission(test_client, setup_users_and
 
 # --- Test can_manage_user_permissions permission ---
 
-def test_get_user_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_get_user_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to view user permissions.
     """
@@ -90,7 +89,7 @@ def test_get_user_permissions_as_super_admin(test_client, setup_users_and_permis
     assert "explicit_permissions" in data
     assert "all_available_permissions" in data
 
-def test_assign_user_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_assign_user_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to assign individual user permissions.
     """
@@ -111,7 +110,7 @@ def test_assign_user_permissions_as_super_admin(test_client, setup_users_and_per
 
 # --- Test Popup Management permissions ---
 
-def test_create_popup_as_manager(test_client, setup_users_and_permissions, auth_headers_for_manager, mock_jwks_client):
+def test_create_popup_as_manager(test_client, setup_users_and_permissions, auth_headers_for_manager):
     """
     Manager should be able to create popups by default.
     """
@@ -119,7 +118,7 @@ def test_create_popup_as_manager(test_client, setup_users_and_permissions, auth_
     response = test_client.post('/api/management/popups', headers=auth_headers_for_manager, json=popup_data)
     assert response.status_code == 201
 
-def test_delete_popup_as_manager_without_permission(test_client, setup_users_and_permissions, auth_headers_for_manager, mock_jwks_client):
+def test_delete_popup_as_manager_without_permission(test_client, setup_users_and_permissions, auth_headers_for_manager):
     """
     Manager should not be able to delete popups by default.
     """
@@ -132,7 +131,7 @@ def test_delete_popup_as_manager_without_permission(test_client, setup_users_and
     assert response.status_code == 403
     assert json.loads(response.data.decode('utf-8'))['error'] == "Permission 'can_delete_popups' required."
 
-def test_delete_popup_as_super_admin_with_permission(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_delete_popup_as_super_admin_with_permission(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to delete popups by default.
     """
@@ -146,7 +145,7 @@ def test_delete_popup_as_super_admin_with_permission(test_client, setup_users_an
 
 # --- Test Role Permission Management APIs ---
 
-def test_get_all_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_get_all_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to get all permissions.
     """
@@ -156,7 +155,7 @@ def test_get_all_permissions_as_super_admin(test_client, setup_users_and_permiss
     assert len(data) > 0 # Should return a list of permissions
     assert "can_view_users" in [p['name'] for p in data]
 
-def test_assign_role_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin, mock_jwks_client):
+def test_assign_role_permissions_as_super_admin(test_client, setup_users_and_permissions, auth_headers_for_super_admin):
     """
     Super Admin should be able to assign permissions to roles.
     """
@@ -176,7 +175,7 @@ def test_assign_role_permissions_as_super_admin(test_client, setup_users_and_per
 
 # --- Test Super Admin self-demotion prevention ---
 
-def test_super_admin_cannot_demote_self(test_client, super_admin_user_in_db, auth_headers_for_super_admin, mock_jwks_client):
+def test_super_admin_cannot_demote_self(test_client, super_admin_user_in_db, auth_headers_for_super_admin):
     """
     Super Admin should not be able to demote themselves.
     """

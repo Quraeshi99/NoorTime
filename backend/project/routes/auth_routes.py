@@ -1,6 +1,6 @@
 # project/routes/auth_routes.py
 
-from flask import Blueprint
+from flask_smorest import Blueprint
 # We will keep current_user and login_required for future JWT validation
 from flask_login import login_required, current_user
 

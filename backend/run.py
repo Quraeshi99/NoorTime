@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import os
 from project import create_app, db
 from flask_migrate import Migrate
@@ -15,9 +19,13 @@ app = create_app(config_name)
 # Step 3: Initialize Flask-Migrate
 migrate = Migrate(app, db)
 
-# Step 4: Create database tables if they don't exist
-with app.app_context():
-    db.create_all()
+# Step 4: Database Migrations
+# Database tables are now managed exclusively via Flask-Migrate.
+# To create or update tables, use the following commands in your terminal:
+# 1. flask db migrate -m "Your migration message"
+# 2. flask db upgrade
+# The old db.create_all() has been removed to rely on this better system.
+
 
 # Step 5: Run the app
 if __name__ == '__main__':
