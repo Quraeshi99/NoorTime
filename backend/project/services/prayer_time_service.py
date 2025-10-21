@@ -649,6 +649,41 @@ def calculate_display_times_from_service(user_settings, api_times_today, api_tim
     else:
         calculated_times["chasht"] = {"azan": "N/A", "jamaat": "N/A"}
 
+    # --- Zohwa-e-Kubra Calculation ---
+    fajr_time_str = api_times_today.get("Fajr")
+    sunrise_time_str = api_times_today.get("Sunrise")
+    sunset_time_str = api_times_today.get("Sunset")
+
+    zohwa_kubra_start_obj = None
+    fajr_obj = _parse_time_str(fajr_time_str)
+    sunset_obj = _parse_time_str(sunset_time_str)
+    if fajr_obj and sunset_obj:
+        dummy_date = datetime.date.today()
+        fajr_dt = datetime.datetime.combine(dummy_date, fajr_obj)
+        sunset_dt = datetime.datetime.combine(dummy_date, sunset_obj)
+        if sunset_dt < fajr_dt:
+            sunset_dt += datetime.timedelta(days=1)
+        duration = sunset_dt - fajr_dt
+        midpoint_dt = fajr_dt + duration / 2
+        zohwa_kubra_start_obj = midpoint_dt.time()
+
+    zohwa_kubra_end_obj = None
+    sunrise_obj = _parse_time_str(sunrise_time_str)
+    if sunrise_obj and sunset_obj:
+        dummy_date = datetime.date.today()
+        sunrise_dt = datetime.datetime.combine(dummy_date, sunrise_obj)
+        sunset_dt = datetime.datetime.combine(dummy_date, sunset_obj)
+        if sunset_dt < sunrise_dt:
+            sunset_dt += datetime.timedelta(days=1)
+        duration = sunset_dt - sunrise_dt
+        midpoint_dt = sunrise_dt + duration / 2
+        zohwa_kubra_end_obj = midpoint_dt.time()
+
+    calculated_times["zohwa_kubra"] = {
+        "start": _format_time_obj(zohwa_kubra_start_obj),
+        "end": _format_time_obj(zohwa_kubra_end_obj)
+    }
+
     # The needs_db_update flag is used to signal if the last_api_times_for_threshold
     # in user settings needs to be updated in the database.
     return calculated_times, needs_db_update
