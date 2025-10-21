@@ -194,6 +194,30 @@ class User(UserMixin, db.Model):
         return f'<User {self.email} - {self.role}>'
 
 
+class UserDevice(db.Model):
+    """Stores device tokens for sending push notifications to users."""
+    __tablename__ = 'user_device'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    
+    # The FCM device token provided by the client app.
+    device_token = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    
+    # Type of the device (e.g., 'android', 'ios', 'web')
+    device_type = db.Column(db.String(20), nullable=False, default='android')
+    
+    # Timestamps for tracking when the token was added or last updated.
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # --- Relationships ---
+    user = db.relationship('User', backref=db.backref('devices', lazy=True, cascade="all, delete-orphan"))
+
+    def __repr__(self):
+        return f'<UserDevice ID:{self.id} UserID:{self.user_id}>'
+
+
 class UserSettings(db.Model):
     __tablename__ = 'user_settings'
     id = db.Column(db.Integer, primary_key=True)
@@ -248,9 +272,13 @@ class UserSettings(db.Model):
     isha_jamaat_offset = db.Column(db.Integer, default=15)
 
     # Jummah specific settings
+    jummah_is_fixed = db.Column(db.Boolean, default=True) # Default to fixed for backward compatibility
     jummah_azan_time = db.Column(db.String(5), default="01:15")
     jummah_khutbah_start_time = db.Column(db.String(5), default="01:30")
     jummah_jamaat_time = db.Column(db.String(5), default="01:45")
+    jummah_azan_offset = db.Column(db.Integer, default=15) # Offset from Dhuhr raw time
+    jummah_khutbah_offset = db.Column(db.Integer, default=15) # Offset from calculated Jummah Azan time
+    jummah_jamaat_offset = db.Column(db.Integer, default=15) # Offset from calculated Jummah Azan time
 
     # Hijri date adjustment for user's display
     hijri_offset = db.Column(db.Integer, default=0)

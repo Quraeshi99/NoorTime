@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import os
 from project import create_app, db
 from flask_migrate import Migrate
-from config import config_by_name
+from project.config import config_by_name
 
 # Step 1: Determine the config name
 config_name = os.environ.get('FLASK_CONFIG') or 'default'

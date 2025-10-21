@@ -3,6 +3,7 @@ import string
 import random
 from .. import db
 from ..models import User, UserMasjidFollow, MasjidAnnouncement
+from .notification_service import send_announcement_to_masjid_followers
 
 def generate_unique_masjid_code(size=8):
     """Generates a unique, random alphanumeric code for a Masjid."""
@@ -96,5 +97,9 @@ def create_announcement(masjid, title, content):
     )
     db.session.add(new_announcement)
     db.session.commit()
+
+    # Send notification to followers
+    send_announcement_to_masjid_followers(masjid, new_announcement)
+
     return new_announcement
 

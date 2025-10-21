@@ -96,7 +96,33 @@ def _check_and_trigger_grace_period_fetch(final_zone_id: str, calculation_method
             current_app.logger.debug(f"GRACE PERIOD: Next year's calendar for zone '{final_zone_id}' already exists. No fetch needed.")
 
 
+from ..tasks import fetch_and_cache_yearly_calendar_task
+
 # --- Private Helper Functions ---
+
+def _get_daily_prayer_times_from_api(date_obj, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id):
+    """
+    Fetches prayer times for a single day directly from the API adapter.
+    This is used for the 'instant gratification' part of the hybrid cache strategy.
+    """
+    adapter = get_selected_api_adapter()
+    if not adapter:
+        return None
+    
+    try:
+        # Call the new daily fetch method on the adapter
+        daily_data = adapter.fetch_daily_timings(
+            date_obj=date_obj,
+            latitude=latitude,
+            longitude=longitude,
+            method_id=method_id,
+            asr_juristic_id=asr_juristic_id,
+            high_latitude_method_id=high_latitude_method_id
+        )
+        return daily_data
+    except Exception as e:
+        current_app.logger.error(f"Exception during single-day API fetch: {e}", exc_info=True)
+        return None
 
 def _get_zone_id_from_coords(latitude, longitude):
     """
@@ -253,155 +279,144 @@ def _get_method_id_for_country(country_code):
         # Fallback to a hardcoded, safe default (MWL)
         return 3
 
+import json
+from ..extensions import redis_client
+
 # --- Main Service Function ---
 
 def get_api_prayer_times_for_date_from_service(date_obj, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id, force_refresh=False):
     """
-    The core service function to fetch prayer times for a specific date and location.
-    It now includes logic to handle the "Automatic" calculation method selection.
+    The core service function, now refactored for a Redis-backed hybrid caching strategy.
+    It provides an instant response even for new, uncached locations.
     """
     year = date_obj.year
     today_date_str = date_obj.strftime("%d-%m-%Y")
 
-    # 1. Get Admin Levels from Geocoding Service
+    # 1. Determine Zone ID
     admin_levels = get_admin_levels_from_coords(latitude, longitude)
-
-    # --- Smart "Automatic" Method Resolution ---
-    # The frontend can send a special ID (e.g., 99) to signify "Automatic" mode.
-    # If so, we resolve it to a specific method ID based on the user's country.
-    AUTOMATIC_METHOD_ID = 99 # This special ID should be a constant.
+    
+    AUTOMATIC_METHOD_ID = 99
     if method_id == AUTOMATIC_METHOD_ID:
-        country_code = "XX" # Default country code
-        if admin_levels and admin_levels.get('country_code'):
-            country_code = admin_levels.get('country_code')
-        # Resolve the actual method ID from our JSON map.
+        country_code = admin_levels.get('country_code', 'XX') if admin_levels else 'XX'
         method_id = _get_method_id_for_country(country_code)
 
-    # Create a composite key for caching that includes all prayer time calculation settings.
     composite_method_key = f"{method_id}-{asr_juristic_id}-{high_latitude_method_id}"
-    
-    admin_2_zone_id = None
-    admin_3_zone_id = None
-    final_zone_id = None
 
-    if admin_levels:
-        admin_2_zone_id = _get_zone_id_from_admin_levels(admin_levels, level="admin_2")
-        admin_3_zone_id = _get_zone_id_from_admin_levels(admin_levels, level="admin_3")
+    final_zone_id = _determine_final_zone_id(year, latitude, longitude, admin_levels, composite_method_key, force_refresh)
 
-    # 2. Handle Fallback to Grid System if Admin Levels are Not Found
-    if not admin_2_zone_id:
-        current_app.logger.warning(f"Could not determine admin-based zone for ({latitude}, {longitude}). Using fallback grid system.")
-        final_zone_id = _get_zone_id_from_coords(latitude, longitude)
-    # 3. Main Logic: Admin Level 2 and Admin Level 3 Comparison
-    elif admin_3_zone_id:
-        current_app.logger.info(f"Comparing Admin Level 2 ('{admin_2_zone_id}') and 3 ('{admin_3_zone_id}').")
-        admin_2_calendar_data = _get_yearly_calendar_data(admin_2_zone_id, year, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude, force_refresh)
-        admin_3_calendar_data = _get_yearly_calendar_data(admin_3_zone_id, year, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude, force_refresh)
+    if not final_zone_id:
+        current_app.logger.error(f"Could not determine a final zone ID for ({latitude}, {longitude}).")
+        return None
 
-        if admin_3_calendar_data and not _compare_prayer_times(admin_2_calendar_data, admin_3_calendar_data, threshold_seconds=50):
-            final_zone_id = admin_2_zone_id
-            current_app.logger.info(f"Admin Level 2 ('{admin_2_zone_id}') is sufficient for ({latitude}, {longitude}).")
-        else:
-            final_zone_id = admin_3_zone_id
-            current_app.logger.info(f"Admin Level 3 ('{admin_3_zone_id}') is required for ({latitude}, {longitude}).")
+    # 2. Attempt to get the full yearly calendar from cache (Redis or DB)
+    yearly_calendar = _get_yearly_calendar_from_cache(final_zone_id, year, composite_method_key)
+
+    if yearly_calendar:
+        for day_data in yearly_calendar:
+            if day_data.get('date', {}).get('gregorian', {}).get('date') == today_date_str:
+                return day_data
+        current_app.logger.error(f"Data for {today_date_str} not found in cached calendar for zone {final_zone_id}")
+        return None
+
+    # 3. Cache MISS: Hybrid approach
     else:
-        # No Admin Level 3 available, so use Admin Level 2 as the most specific.
-        final_zone_id = admin_2_zone_id
-        current_app.logger.info(f"No Admin Level 3 available. Using Admin Level 2 ('{admin_2_zone_id}') for ({latitude}, {longitude}).")
+        current_app.logger.info(f"COMPLETE CACHE MISS for zone '{final_zone_id}'. Using Hybrid Approach.")
+        
+        fetch_and_cache_yearly_calendar_task.delay(
+            zone_id=final_zone_id,
+            year=year,
+            method_id=method_id,
+            asr_juristic_id=asr_juristic_id,
+            high_latitude_method_id=high_latitude_method_id,
+            latitude=latitude,
+            longitude=longitude
+        )
+        current_app.logger.info(f"Triggered background task for zone '{final_zone_id}'.")
 
-    # 4. Trigger Grace Period background fetch if applicable.
-    # This is non-blocking and will not delay the current user's request.
-    _check_and_trigger_grace_period_fetch(final_zone_id, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude)
+        daily_data = _get_daily_prayer_times_from_api(
+            date_obj=date_obj,
+            latitude=latitude,
+            longitude=longitude,
+            method_id=method_id,
+            asr_juristic_id=asr_juristic_id,
+            high_latitude_method_id=high_latitude_method_id
+        )
+        
+        # Cache the single-day result for a short time to prevent API hammering
+        if daily_data:
+            redis_key = f"daily:{final_zone_id}:{today_date_str}:{composite_method_key}"
+            redis_client.set(redis_key, json.dumps(daily_data), ex=3600) # Cache for 1 hour
 
-    # 5. Fetch/Cache and Return the Calendar for the Final Determined Zone for the CURRENT request
-    # If it's a new zone during grace period, this will be a blocking call for the current year.
-    # If it's an existing zone, it will serve from cache.
-    return _fetch_and_cache_yearly_calendar(
-        final_zone_id, year, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude, today_date_str, force_refresh
-    )
+        return daily_data
 
-def _get_yearly_calendar_data(zone_id, year, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude, force_refresh):
+def _determine_final_zone_id(year, latitude, longitude, admin_levels, composite_method_key, force_refresh):
+    """Determines the most appropriate zone ID to use (Admin2, Admin3, or grid)."""
+    if not admin_levels:
+        current_app.logger.warning(f"No admin levels for ({latitude}, {longitude}). Using fallback grid.")
+        return _get_zone_id_from_coords(latitude, longitude)
+
+    admin_2_zone_id = _get_zone_id_from_admin_levels(admin_levels, level="admin_2")
+    admin_3_zone_id = _get_zone_id_from_admin_levels(admin_levels, level="admin_3")
+
+    if not admin_3_zone_id:
+        return admin_2_zone_id
+
+    admin_2_calendar = _get_yearly_calendar_from_cache(admin_2_zone_id, year, composite_method_key)
+    if not admin_2_calendar:
+        return admin_3_zone_id
+
+    admin_3_calendar = _get_yearly_calendar_from_cache(admin_3_zone_id, year, composite_method_key)
+    if not admin_3_calendar:
+        return admin_3_zone_id
+
+    if not _compare_prayer_times(admin_2_calendar, admin_3_calendar, threshold_seconds=50):
+        current_app.logger.info(f"Admin Level 2 ('{admin_2_zone_id}') is sufficient.")
+        return admin_2_zone_id
+    else:
+        current_app.logger.info(f"Admin Level 3 ('{admin_3_zone_id}') is required.")
+        return admin_3_zone_id
+
+def _get_yearly_calendar_from_cache(zone_id, year, composite_method_key):
     """
-    Helper function to get a yearly calendar from cache or fetch from API.
-    The caching key is now a composite of method, asr, and high-latitude settings.
+    New caching function that checks Redis first, then the database.
+    If found in DB, it caches to Redis for future requests.
     """
-    composite_method_key = f"{method_id}-{asr_juristic_id}-{high_latitude_method_id}"
+    redis_key = f"calendar:{zone_id}:{year}:{composite_method_key}"
 
-    # Check cache first
-    if not force_refresh:
-        cached_calendar = PrayerZoneCalendar.query.filter_by(
-            zone_id=zone_id, 
-            year=year, 
-            calculation_method=composite_method_key
-        ).first()
-
-        if cached_calendar:
-            current_app.logger.info(f"Cache HIT for zone '{zone_id}', year {year}, method '{composite_method_key}'.")
-            return cached_calendar.calendar_data
-
-    # Cache Miss: Fetch data from the external API.
-    current_app.logger.info(f"Cache MISS for zone '{zone_id}', year {year}, method '{composite_method_key}'. Fetching from API.")
-    adapter = get_selected_api_adapter()
-    if not adapter:
-        return None
-
+    # 1. Check Redis Cache first
     try:
-        yearly_data = adapter.fetch_yearly_calendar(year, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id)
-
-        if not yearly_data:
-            current_app.logger.error(f"Failed to fetch yearly calendar from adapter for zone {zone_id}")
-            return None
-
-        # Save the new data to the cache.
-        existing_entry = PrayerZoneCalendar.query.filter_by(
-            zone_id=zone_id, 
-            year=year, 
-            calculation_method=composite_method_key
-        ).first()
-        
-        if existing_entry:
-            existing_entry.calendar_data = yearly_data
-            existing_entry.updated_at = datetime.datetime.utcnow()
-            current_app.logger.info(f"Updated existing calendar for zone '{zone_id}', method '{composite_method_key}'.")
-        else:
-            new_calendar_entry = PrayerZoneCalendar(
-                zone_id=zone_id,
-                year=year,
-                calculation_method=composite_method_key,
-                calendar_data=yearly_data
-            )
-            db.session.add(new_calendar_entry)
-            current_app.logger.info(f"Created new calendar for zone '{zone_id}', method '{composite_method_key}'.")
-        
-        db.session.commit()
-        return yearly_data
-
+        cached_data = redis_client.get(redis_key)
+        if cached_data:
+            current_app.logger.info(f"Redis Cache HIT for zone '{zone_id}', year {year}.")
+            return json.loads(cached_data)
     except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Exception during API fetch or DB save for zone {zone_id}: {e}", exc_info=True)
-        return None
+        current_app.logger.error(f"Redis GET failed: {e}", exc_info=True)
 
-def _fetch_and_cache_yearly_calendar(zone_id, year, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude, today_date_str, force_refresh):
-    """
-    Helper to fetch, cache, and return the specific day's data from a yearly calendar.
-    This is used by both the main logic and the fallback path.
-    """
-    # If zone_id could not be determined, we cannot proceed.
-    if not zone_id:
-        current_app.logger.error(f"Cannot fetch calendar because final_zone_id is None for ({latitude}, {longitude}).")
-        return None
+    current_app.logger.info(f"Redis Cache MISS for zone '{zone_id}', year {year}.")
 
-    yearly_data = _get_yearly_calendar_data(zone_id, year, method_id, asr_juristic_id, high_latitude_method_id, latitude, longitude, force_refresh)
+    # 2. Check Database Cache
+    db_calendar = PrayerZoneCalendar.query.filter_by(
+        zone_id=zone_id, 
+        year=year, 
+        calculation_method=composite_method_key
+    ).first()
+
+    if db_calendar:
+        current_app.logger.info(f"DB Cache HIT for zone '{zone_id}', year {year}.")
+        calendar_data = db_calendar.calendar_data
+        
+        # 3. Populate Redis Cache from DB data
+        try:
+            redis_client.set(redis_key, json.dumps(calendar_data), ex=2592000) # Cache for 30 days
+            current_app.logger.info(f"Populated Redis cache for zone '{zone_id}', year {year}.")
+        except Exception as e:
+            current_app.logger.error(f"Redis SET failed: {e}", exc_info=True)
+            
+        return calendar_data
     
-    if not yearly_data:
-        return None
-
-    for day_data in yearly_data:
-        if day_data.get('date', {}).get('gregorian', {}).get('date') == today_date_str:
-            return day_data
-    
-    current_app.logger.error(f"Could not find requested date {today_date_str} in fetched calendar for zone {zone_id}")
+    current_app.logger.info(f"DB Cache MISS for zone '{zone_id}', year {year}.")
     return None
+
 
 
 
@@ -480,101 +495,148 @@ def _get_single_prayer_info(prayer_name, api_times, user_settings, api_times_day
 
 def calculate_display_times_from_service(user_settings, api_times_today, api_times_tomorrow, app_config):
     """
-    Calculates final Azan & Jama'at times with resilience against data failures.
-    If base API data is unavailable, it will still return user-configured fixed times.
-    Offset-based times will gracefully degrade to "N/A" if base data is missing.
-    Returns a tuple: (calculated_times, needs_db_update)
-    """
-    # This dictionary will store the final display times.
-    calculated_times = {}
-    needs_db_update = False # This logic remains for thresholding feature
+    Calculates final Azan & Jama'at times based on raw API data and user preferences.
+    This function is the core of the personalization logic.
+    
+    Args:
+        user_settings (UserSettings): The user's personal settings object.
+        api_times_today (dict): Raw prayer times for the current day from the API/cache.
+        api_times_tomorrow (dict): Raw prayer times for the next day for boundary checks.
+        app_config (dict): The Flask app's configuration.
 
-    # If api_times are missing, create empty dicts to prevent errors on .get() calls
+    Returns:
+        tuple: A tuple containing (calculated_times, needs_db_update).
+               - calculated_times (dict): The final, display-ready prayer times.
+               - needs_db_update (bool): A flag indicating if user settings need to be persisted.
+    """
+    calculated_times = {}
+    needs_db_update = False
+
+    # If raw API times are not available, use empty dicts to prevent errors.
+    # The function will still attempt to calculate fixed times.
     if not api_times_today:
         api_times_today = {}
     if not api_times_tomorrow:
         api_times_tomorrow = {}
 
-    # --- Last API Times for Thresholding Logic ---
+    # --- Last API Times for Thresholding Logic (Restored) ---
+    # This logic prevents small, insignificant changes in raw API times from causing
+    # frequent updates on the user's screen, ensuring a more stable display.
     last_api_times = {}
     if user_settings.last_api_times_for_threshold:
         try:
             last_api_times = json.loads(user_settings.last_api_times_for_threshold)
         except (json.JSONDecodeError, TypeError):
-            current_app.logger.warning("Could not parse last_api_times_for_threshold JSON.")
-            needs_db_update = True
+            current_app.logger.warning("Could not parse last_api_times_for_threshold JSON. Resetting.")
+            needs_db_update = True # Force update if parsing fails
 
-    # --- Loop through each prayer and calculate display time ---
+    # --- 1. Main Prayer Calculation Loop (Fajr, Dhuhr, Asr, Maghrib, Isha) ---
+    # This loop iterates through the 5 main prayers using a configuration map
+    # that defines the keys and attributes for each prayer.
     for p_key, config in PRAYER_CONFIG_MAP.items():
+        # For each prayer, check if the user has set it to a fixed time.
         is_fixed = getattr(user_settings, config["is_fixed_attr"], False)
         
         azan_time_obj, jamaat_time_obj = None, None
 
-        # 1. Prioritize Fixed Times
-        # This block works even if api_times_today is empty.
+        # --- Logic for Fixed Times ---
         if is_fixed:
+            # If the time is fixed, we directly parse the user-defined string time.
+            # This works even if the API data is unavailable.
             azan_time_obj = _parse_time_str(getattr(user_settings, config["fixed_azan_attr"]))
             jamaat_time_obj = _parse_time_str(getattr(user_settings, config["fixed_jamaat_attr"]))
         
-        # 2. Calculate Offset-based Times (only if not fixed and API data is available)
+        # --- Logic for Offset-based Times ---
         else:
+            # If not fixed, we calculate the time based on the raw API time plus a user-defined offset.
             api_start_time_str = api_times_today.get(config["api_key"])
             
-            # This block requires the base API time to be present.
             if api_start_time_str:
+                # Determine the end boundary for the prayer (usually the start of the next prayer).
                 start_boundary_str = api_start_time_str
                 end_boundary_key = config["end_boundary_key"]
                 end_boundary_str = api_times_tomorrow.get("Fajr") if end_boundary_key == "Fajr_Tomorrow" else api_times_today.get(end_boundary_key)
 
+                # Apply thresholding logic to prevent small, frequent changes.
                 api_time_to_use_str = api_start_time_str
                 last_api_time_str = last_api_times.get(config["api_key"])
                 
-                # Thresholding logic to prevent small, frequent changes
                 if last_api_time_str and user_settings.threshold_minutes > 0:
                     last_time_obj = _parse_time_str(last_api_time_str)
                     new_time_obj = _parse_time_str(api_start_time_str)
                     if last_time_obj and new_time_obj:
+                        # Calculate difference in minutes
                         diff = abs((datetime.datetime.combine(datetime.date.today(), new_time_obj) - datetime.datetime.combine(datetime.date.today(), last_time_obj)).total_seconds() / 60)
                         if diff < user_settings.threshold_minutes:
+                            # If difference is below threshold, use the last known stable time.
                             api_time_to_use_str = last_api_time_str
                         else:
+                            # If difference exceeds threshold, update to the new time and flag for DB update.
                             needs_db_update = True
                     else:
+                        # If parsing fails, assume update is needed.
                         needs_db_update = True
                 else:
+                    # If no last time is stored or threshold is 0, always update.
                     needs_db_update = True
 
                 api_start_time_obj = _parse_time_str(api_time_to_use_str)
                 if api_start_time_obj:
+                    # Calculate Azan time by adding the user's offset to the raw API time.
                     azan_offset = getattr(user_settings, config["azan_offset_attr"])
                     calculated_azan_obj = _add_minutes(api_start_time_obj, azan_offset)
+                    # Ensure the calculated time does not cross into the next prayer's time.
                     azan_time_obj = _apply_boundary_check(calculated_azan_obj, start_boundary_str, end_boundary_str)
                     
                     if azan_time_obj:
+                        # Calculate Jamaat time by adding the user's offset to the calculated Azan time.
                         jamaat_offset = getattr(user_settings, config["jamaat_offset_attr"])
                         calculated_jamaat_obj = _add_minutes(azan_time_obj, jamaat_offset)
                         jamaat_time_obj = _apply_boundary_check(calculated_jamaat_obj, start_boundary_str, end_boundary_str)
 
-        # Format the final times, will result in "N/A" if objects are None
+        # Store the final, formatted times for the current prayer.
         calculated_times[p_key] = {"azan": _format_time_obj(azan_time_obj), "jamaat": _format_time_obj(jamaat_time_obj)}
     
-    # 3. Handle Iftari (Sunset) and Sehri End (Imsak)
-    # These are critical times, especially during Ramadan.
-    # Iftari time is the start of Maghrib prayer.
+    # --- 2. Special Time Calculations (Iftari, Sehri, Jummah, Chasht) ---
+
+    # Iftari time is always the same as the raw Maghrib start time.
     maghrib_time_str = api_times_today.get("Maghrib")
     calculated_times["iftari"] = {"time": _format_time_obj(_parse_time_str(maghrib_time_str))}
 
+    # Sehri End time is always the same as the raw Imsak time.
     imsak_time_str = api_times_today.get("Imsak")
     calculated_times["sehri_end"] = {"time": _format_time_obj(_parse_time_str(imsak_time_str))}
 
-    # 4. Handle Jummah (Always treated as fixed)
+    # --- New, Flexible Jummah Calculation ---
+    # This block calculates Jummah time, respecting the user's choice for it to be fixed or offset-based.
+    if user_settings.jummah_is_fixed:
+        # If Jummah is fixed, use the user-defined times directly.
+        jummah_azan_obj = _parse_time_str(user_settings.jummah_azan_time)
+        jummah_khutbah_obj = _parse_time_str(user_settings.jummah_khutbah_start_time)
+        jummah_jamaat_obj = _parse_time_str(user_settings.jummah_jamaat_time)
+    else:
+        # If not fixed, calculate based on Dhuhr's raw time.
+        dhuhr_raw_time_str = api_times_today.get("Dhuhr")
+        dhuhr_raw_time_obj = _parse_time_str(dhuhr_raw_time_str)
+        
+        jummah_azan_obj, jummah_khutbah_obj, jummah_jamaat_obj = None, None, None
+
+        if dhuhr_raw_time_obj:
+            # Calculate Jummah Azan based on Dhuhr raw time + offset.
+            jummah_azan_obj = _add_minutes(dhuhr_raw_time_obj, user_settings.jummah_azan_offset)
+            
+            if jummah_azan_obj:
+                # Khutbah and Jamaat are calculated relative to the calculated Azan time.
+                jummah_khutbah_obj = _add_minutes(jummah_azan_obj, user_settings.jummah_khutbah_offset)
+                jummah_jamaat_obj = _add_minutes(jummah_azan_obj, user_settings.jummah_jamaat_offset)
+
     calculated_times["jummah"] = {
-        "azan": user_settings.jummah_azan_time,
-        "khutbah": user_settings.jummah_khutbah_start_time,
-        "jamaat": user_settings.jummah_jamaat_time
+        "azan": _format_time_obj(jummah_azan_obj),
+        "khutbah": _format_time_obj(jummah_khutbah_obj),
+        "jamaat": _format_time_obj(jummah_jamaat_obj)
     }
 
-    # 5. Handle Chasht (Sunrise dependent)
+    # Chasht (Duha) prayer time is calculated as 20 minutes and 30 seconds after Sunrise.
     sunrise_time_str = api_times_today.get("Sunrise")
     if sunrise_time_str:
         sunrise_time_obj = _parse_time_str(sunrise_time_str)
@@ -587,6 +649,8 @@ def calculate_display_times_from_service(user_settings, api_times_today, api_tim
     else:
         calculated_times["chasht"] = {"azan": "N/A", "jamaat": "N/A"}
 
+    # The needs_db_update flag is used to signal if the last_api_times_for_threshold
+    # in user settings needs to be updated in the database.
     return calculated_times, needs_db_update
 
 def get_next_prayer_info_from_service(display_times_today, tomorrow_fajr_display_details, now_datetime_obj):

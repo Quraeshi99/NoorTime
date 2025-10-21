@@ -3,11 +3,13 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from flask_mail import Mail
 
 # Import extensions from the central extensions file
-from .extensions import db, limiter
+from .extensions import db, limiter, redis_client
 import logging
 from flask import Flask
 from flask_cors import CORS
 from flask_smorest import Api
+
+from .celery_utils import init_celery
 
 # Declare extensions that are not in the extensions file
 mail = Mail()
@@ -39,9 +41,10 @@ def create_app(config_name):
     app.logger.info(f"SQLALCHEMY_DATABASE_URI: {app.config.get('SQLALCHEMY_DATABASE_URI')}")
 
     # 2. Sentry SDK initialization - for error and performance tracking
-    if app.config.get('SENTRY_DSN'):
+    sentry_dsn = app.config.get('SENTRY_DSN')
+    if sentry_dsn and '@' in sentry_dsn: # A simple check for a valid-looking DSN
         sentry_sdk.init(
-            dsn=app.config['SENTRY_DSN'],
+            dsn=sentry_dsn,
             integrations=[FlaskIntegration()],
             send_default_pii=True,
             traces_sample_rate=1.0
@@ -73,8 +76,14 @@ def create_app(config_name):
     # 6. Initialize Rate Limiter
     limiter.init_app(app)
 
+    # 7. Initialize Redis Client
+    redis_client.init_app(app)
+
     # 7. Initialize Flask-Smorest API
     api.init_app(app)
+
+    # 8. Initialize Celery
+    init_celery(app)
 
     # 8. Register Blueprints in app context
     with app.app_context():

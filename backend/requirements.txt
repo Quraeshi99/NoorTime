@@ -21,6 +21,8 @@ freezegun
 flask-marshmallow
 marshmallow-sqlalchemy
 redis
+celery
+flower
 Flask-Caching
 flask-smorest
 geopy
@@ -28,3 +30,4 @@ ImageHash
 google-cloud-vision
 Pillow
 Flask-Migrate
+pyfcm

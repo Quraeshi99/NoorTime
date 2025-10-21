@@ -5,62 +5,46 @@ from abc import ABC, abstractmethod # Abstract Base Classes
 class BasePrayerTimeAdapter(ABC):
     """
     Abstract base class for all prayer time API adapters.
-    Ensures that all adapters implement a common interface.
+    Ensures that all adapters implement a common, consistent interface.
     """
 
     def __init__(self, base_url=None, api_key=None):
         self.base_url = base_url
         self.api_key = api_key
-        # Any other common initialization for all adapters
 
     @abstractmethod
-    def fetch_prayer_times(self, date_obj, latitude, longitude, calculation_method_key_or_params):
+    def fetch_daily_timings(self, date_obj, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id):
         """
-        Fetches prayer times for a given date, location, and calculation method.
+        Fetches prayer times for a single given date, location, and calculation settings.
 
-        :param date_obj: datetime.date object for the desired date.
-        :param latitude: float, latitude of the location.
-        :param longitude: float, longitude of the location.
-        :param calculation_method_key_or_params: String key (e.g., "Karachi", "ISNA") 
-                                                 or a dictionary of API-specific parameters
-                                                 representing the calculation method.
-        :return: A dictionary containing prayer times and other relevant data in a
-                 standardized format, or None if an error occurs.
-                 Example standardized format:
-                 {
-                     "Fajr": "HH:MM", "Sunrise": "HH:MM", "Dhuhr": "HH:MM", 
-                     "Asr": "HH:MM", "Sunset": "HH:MM", "Maghrib": "HH:MM", 
-                     "Isha": "HH:MM", "Imsak": "HH:MM", "Midnight": "HH:MM",
-                     "gregorian_date": "DD-MM-YYYY", "gregorian_weekday": "DayName", ...
-                     "hijri_date": "DD-MM-YYYY", "hijri_weekday": "DayName", ...
-                     "temperatureC": float (optional), "weather_description": str (optional)
-                 }
+        Args:
+            date_obj (datetime.date): The desired date.
+            latitude (float): The latitude of the location.
+            longitude (float): The longitude of the location.
+            method_id (int): The ID of the calculation method.
+            asr_juristic_id (int): The school for Asr calculation (0 for Standard, 1 for Hanafi).
+            high_latitude_method_id (int): The adjustment rule for high latitudes.
+
+        Returns:
+            dict: A dictionary containing the prayer times for the single day,
+                  or None if an error occurs.
         """
         pass
 
     @abstractmethod
-    def fetch_yearly_calendar(self, year, latitude, longitude, calculation_method_key):
+    def fetch_yearly_calendar(self, year, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id):
         """
         Fetches a full year's prayer time calendar from the API.
 
-        :param year: The integer year for the calendar.
-        :param latitude: The float latitude.
-        :param longitude: The float longitude.
-        :param calculation_method_key: The user-friendly key for the calculation method.
-        :return: A list of daily prayer time data for the entire year, or None if an error occurs.
+        Args:
+            year (int): The calendar year.
+            latitude (float): The latitude of the location.
+            longitude (float): The longitude of the location.
+            method_id (int): The ID of the calculation method.
+            asr_juristic_id (int): The school for Asr calculation (0 for Standard, 1 for Hanafi).
+            high_latitude_method_id (int): The adjustment rule for high latitudes.
+
+        Returns:
+            list: A list of daily prayer time data for the entire year, or None if an error occurs.
         """
         pass
-
-    @abstractmethod
-    def map_calculation_method_key(self, user_selected_method_key):
-        """
-        Maps a user-friendly calculation method key (e.g., "Hanafi", "Shafii_Standard")
-        to the API-specific parameters required by this adapter.
-
-        :param user_selected_method_key: String, the key selected by the user in settings.
-        :return: API-specific method parameters (e.g., an integer ID, a dictionary of params).
-        """
-        pass
-
-    # You can add other common methods here if needed by all adapters,
-    # e.g., a method to check API health or validate parameters.

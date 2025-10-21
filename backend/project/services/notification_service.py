@@ -1,77 +1,81 @@
-"""
-Notification Service
---------------------
-This service is responsible for sending all user-facing notifications, starting
-with emails for the Masjid Application process.
-"""
+# project/services/notification_service.py
 
-from flask_mail import Message
-from .. import mail
-from ..models import MasjidApplication
+from flask import current_app
+from pyfcm import FCMNotification
+from ..models import User, UserDevice
 
-def send_approval_email(application: MasjidApplication):
+
+def get_push_service():
+    """Initializes and returns the FCM push service."""
+    api_key = current_app.config.get('FCM_SERVER_KEY')
+    if not api_key:
+        current_app.logger.error("FCM_SERVER_KEY is not configured. Push notifications are disabled.")
+        return None
+    return FCMNotification(api_key=api_key)
+
+def send_notification_to_user(user, title, body, data_message=None):
     """
-    Sends an email to the user informing them that their application has been approved.
+    Sends a push notification to all registered devices for a specific user.
 
     Args:
-        application: The approved MasjidApplication object.
+        user (User): The user object to send the notification to.
+        title (str): The title of the notification.
+        body (str): The body/message of the notification.
+        data_message (dict, optional): A dictionary of custom data to send with the notification.
     """
-    if not application.applicant.email:
+    push_service = get_push_service()
+    if not push_service:
         return
 
-    applicant = application.applicant
-    subject = "Congratulations! Your Masjid Application has been Approved"
-    body = f"""Dear {applicant.name},
+    # Get all device tokens for the user
+    device_tokens = [device.device_token for device in user.devices]
 
-Congratulations! Your application to register '{application.official_name}' as a Masjid on NoorTime has been approved.
+    if not device_tokens:
+        current_app.logger.info(f"User {user.id} has no registered devices. Skipping notification.")
+        return
 
-Your unique Masjid Code is: {applicant.masjid_code}
+    current_app.logger.info(f"Sending notification to {len(device_tokens)} devices for user {user.id}.")
 
-You can now log in to your account to manage your Masjid's prayer times and post announcements for your followers.
-
-Thank you for being a part of the NoorTime community.
-
-Sincerely,
-The NoorTime Team"""
-
-    msg = Message(subject, recipients=[applicant.email], body=body)
-    
     try:
-        mail.send(msg)
-    except Exception as e:
-        # In a production app, you would log this error extensively.
-        print(f"Error sending approval email to {applicant.email}: {e}")
+        result = push_service.notify_multiple_devices(
+            registration_ids=device_tokens,
+            message_title=title,
+            message_body=body,
+            data_message=data_message
+        )
+        current_app.logger.debug(f"FCM result: {result}")
+        # TODO: Handle cleanup of invalid tokens based on the result
 
-def send_rejection_email(application: MasjidApplication):
+    except Exception as e:
+        current_app.logger.error(f"Error sending FCM notification: {e}", exc_info=True)
+
+def send_announcement_to_masjid_followers(masjid, announcement):
     """
-    Sends an email to the user informing them that their application has been rejected.
+    Sends a notification for a new announcement to all followers of a Masjid.
 
     Args:
-        application: The rejected MasjidApplication object.
+        masjid (User): The Masjid user object that created the announcement.
+        announcement (MasjidAnnouncement): The announcement object.
     """
-    if not application.applicant.email:
+    if masjid.role != 'Masjid':
+        current_app.logger.warning(f"Attempted to send announcement from non-masjid user {masjid.id}")
         return
 
-    applicant = application.applicant
-    subject = "Update on Your NoorTime Masjid Application"
-    reason = application.rejection_reason or "the information provided could not be verified at this time."
-    body = f"""Dear {applicant.name},
-
-Thank you for your interest in registering '{application.official_name}' as a Masjid on NoorTime.
-
-After careful review, we were unable to approve your application at this time. 
-Reason for rejection: {reason}
-
-This could be due to several factors, such as an unverified address, duplicate images, or incomplete information. Please review your submission and feel free to re-apply with corrected information.
-
-If you believe this is an error, please contact our support team.
-
-Sincerely,
-The NoorTime Team"""
-
-    msg = Message(subject, recipients=[applicant.email], body=body)
+    # The title of the notification will be the Masjid's name
+    title = masjid.name or "New Announcement"
+    body = announcement.title
     
-    try:
-        mail.send(msg)
-    except Exception as e:
-        print(f"Error sending rejection email to {applicant.email}: {e}")
+    # Optional: send the announcement ID or other data for the app to handle
+    data_message = {
+        "type": "new_announcement",
+        "announcement_id": str(announcement.id),
+        "masjid_id": str(masjid.id)
+    }
+
+    # Get all followers
+    followers = [association.user for association in masjid.followers_association]
+    
+    current_app.logger.info(f"Sending announcement '{announcement.id}' from Masjid '{masjid.id}' to {len(followers)} followers.")
+
+    for follower in followers:
+        send_notification_to_user(follower, title, body, data_message)
