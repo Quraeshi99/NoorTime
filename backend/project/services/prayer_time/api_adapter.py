@@ -1,19 +1,17 @@
-# project/services/api_adapters/aladhan_adapter.py
-
-import datetime
-import requests
+# This module will contain all functions related to interacting with the prayer time API.
 from flask import current_app # To access app.logger and app.config
 from .base_adapter import BasePrayerAdapter
+from typing import Dict, Any, Optional, List
 
 class AlAdhanAdapter(BasePrayerAdapter):
     """
     API Adapter for AlAdhan.com Prayer Times API.
     """
 
-    def __init__(self, base_url, api_key=None):
+    def __init__(self, base_url: str, api_key: Optional[str] = None):
         super().__init__(base_url, api_key)
 
-    def fetch_daily_timings(self, date_obj, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id):
+    def fetch_daily_timings(self, date_obj: datetime.date, latitude: float, longitude: float, method_id: int, asr_juristic_id: int, high_latitude_method_id: int) -> Optional[Dict[str, Any]]:
         """
         Fetches prayer times for a single day from the AlAdhan.com API.
         """
@@ -57,7 +55,7 @@ class AlAdhanAdapter(BasePrayerAdapter):
             current_app.logger.error(f"AlAdhanAdapter: Unexpected error for daily timings {date_str}: {e}", exc_info=True)
             return None
 
-    def fetch_yearly_calendar(self, year, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id):
+    def fetch_yearly_calendar(self, year: int, latitude: float, longitude: float, method_id: int, asr_juristic_id: int, high_latitude_method_id: int) -> Optional[List[Dict[str, Any]]]:
         """
         Fetches a full year's prayer time calendar from the AlAdhan.com API.
         """
@@ -111,7 +109,44 @@ class AlAdhanAdapter(BasePrayerAdapter):
             current_app.logger.error(f"AlAdhanAdapter: Unexpected error for year {year}: {e}", exc_info=True)
             return None
 
+def get_selected_api_adapter():
+    """
+    Instantiates and returns the API adapter based on configuration.
+    """
+    adapter_name = current_app.config.get('PRAYER_API_ADAPTER', "AlAdhanAdapter")
+    base_url = current_app.config.get('PRAYER_API_BASE_URL')
+    api_key = current_app.config.get('PRAYER_API_KEY')
 
+    if adapter_name == "AlAdhanAdapter":
+        if not base_url:
+            current_app.logger.error("AlAdhan API base URL is not configured.")
+            return None
+        from ...api_adapters.aladhan_adapter import AlAdhanAdapter
+        return AlAdhanAdapter(base_url=base_url, api_key=api_key)
+    else:
+        current_app.logger.error(f"Unsupported Prayer API Adapter: {adapter_name}")
+        return None
 
-# You can add other adapter classes here for different APIs in the future,
-# e.g., MuslimSalatAdapter, IslamicFinderAdapter, etc.
+def get_daily_prayer_times_from_api(date_obj, latitude, longitude, method_id, asr_juristic_id, high_latitude_method_id):
+    """
+    Fetches prayer times for a single day directly from the API adapter.
+    This is used for the 'instant gratification' part of the hybrid cache strategy.
+    """
+    adapter = get_selected_api_adapter()
+    if not adapter:
+        return None
+    
+    try:
+        # Call the new daily fetch method on the adapter
+        daily_data = adapter.fetch_daily_timings(
+            date_obj=date_obj,
+            latitude=latitude,
+            longitude=longitude,
+            method_id=method_id,
+            asr_juristic_id=asr_juristic_id,
+            high_latitude_method_id=high_latitude_method_id
+        )
+        return daily_data
+    except Exception as e:
+        current_app.logger.error(f"Exception during single-day API fetch: {e}", exc_info=True)
+        return None

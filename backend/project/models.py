@@ -283,6 +283,9 @@ class UserSettings(db.Model):
     # Hijri date adjustment for user's display
     hijri_offset = db.Column(db.Integer, default=0)
 
+    # IANA timezone string (e.g., 'Asia/Kolkata', 'America/New_York')
+    timezone = db.Column(db.String(100), default='UTC', nullable=False)
+
     def __repr__(self):
         return f'<UserSettings for User ID {self.user_id}>'
 
@@ -365,6 +368,7 @@ class PrayerZoneCalendar(db.Model):
     # The primary key is a combination of the zone, the year, and the calculation method.
     # This ensures that for any given zone and year, we can store multiple calendars
     # based on the user's preferred calculation method (e.g., Karachi, ISNA, etc.).
+    __table_args__ = (db.UniqueConstraint('zone_id', 'year', 'calculation_method', name='uq_zone_year_method'),)
 
     # The human-readable, unique identifier for the geographic zone.
     # Examples: 'IN_UP_BADAUN' (for an Admin Level 2 zone)
@@ -378,6 +382,9 @@ class PrayerZoneCalendar(db.Model):
     # The key for the calculation method used to generate this calendar (e.g., 'Karachi', 'ISNA').
     # This allows storing different prayer times for the same zone based on fiqh/school of thought.
     calculation_method = db.Column(db.String(50), primary_key=True)
+
+    # Version of the schema used for the calendar_data JSON. Used for cache invalidation.
+    schema_version = db.Column(db.String(10), nullable=False, default='v1')
 
     # --- Calendar Data ---
     # Stores the entire year's data (365 days) as a single JSON object.

@@ -2,6 +2,7 @@
 
 import requests
 import datetime
+import json
 from flask import current_app
 
 class IslamicFinderAdapter:
@@ -83,6 +84,6 @@ class IslamicFinderAdapter:
         except requests.exceptions.RequestException as e:
             current_app.logger.error(f"IslamicFinder: Request error: {e}", exc_info=True)
             return None
-        except Exception as e:
-            current_app.logger.error(f"IslamicFinder: Unexpected error during fetch: {e}", exc_info=True)
+        except (json.JSONDecodeError, KeyError) as e:
+            current_app.logger.error(f"IslamicFinder: JSON parsing or key access error during fetch: {e}", exc_info=True)
             return None

@@ -31,3 +31,4 @@ google-cloud-vision
 Pillow
 Flask-Migrate
 pyfcm
+prometheus_client

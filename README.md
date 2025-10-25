@@ -90,6 +90,22 @@ pip install -r requirements.txt
 
 This project uses Flask-Migrate to manage database schema changes.
 
+#### Pending Migrations (As of 2025-10-25)
+
+**Important:** A new `timezone` field has been added to the `UserSettings` model to make the application fully timezone-aware. A unique constraint (`uq_zone_year_method`) has been added to the `PrayerZoneCalendar` model to ensure data integrity. Additionally, a `schema_version` field has been added to `PrayerZoneCalendar` for cache versioning. Migration scripts need to be generated and applied for these changes.
+
+If the database service is not running, the migration commands will fail. Ensure your PostgreSQL server is active, then run:
+
+```bash
+# 1. Generate the migration script (if it doesn't exist yet)
+flask db migrate -m "Add timezone to UserSettings model, unique constraint and schema_version to PrayerZoneCalendar"
+
+# 2. Apply the migration to the database
+flask db upgrade
+```
+
+#### General Usage
+
 To initialize or upgrade your database to the latest version, run the following commands from the `backend` directory:
 
 ```bash

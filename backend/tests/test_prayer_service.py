@@ -43,4 +43,55 @@ def test_get_api_prayer_times_for_leap_year(mock_get_adapter, test_client):
 
     # Check if the correct data is returned
     assert result is not None
-    assert result['date']['gregorian']['date'] == "29-02-2024"
+    assert result['date']['gregorian']['date'] == "29-02-2024"""
+
+@patch('project.services.prayer_time_service.datetime')
+def test_calculate_zohwa_e_kubra_times(mock_datetime, app):
+    """Tests the calculation of Zohwa-e-Kubra start and end times."""
+    from project.services.prayer_time_service import calculate_display_times_from_service
+    from project.models import UserSettings # Assuming UserSettings is available or mocked
+
+    # Mock datetime.date.today() for consistent midpoint calculation
+    mock_datetime.date.today.return_value = date(2024, 1, 1)
+    mock_datetime.datetime = datetime.datetime # Ensure datetime.datetime is available
+
+    # Mock user settings
+    mock_user_settings = MagicMock(spec=UserSettings)
+    mock_user_settings.threshold_minutes = 0
+    # Mock other prayer settings to avoid errors, though not directly tested here
+    mock_user_settings.fajr_is_fixed = False
+    mock_user_settings.dhuhr_is_fixed = False
+    mock_user_settings.asr_is_fixed = False
+    mock_user_settings.maghrib_is_fixed = False
+    mock_user_settings.isha_is_fixed = False
+    mock_user_settings.jummah_is_fixed = False
+    mock_user_settings.last_api_times_for_threshold = "{}" # Empty JSON string
+
+    # Mock API times for today
+    api_times_today = {
+        "Fajr": "05:00",
+        "Sunrise": "06:00",
+        "Sunset": "18:00",
+        "Dhuhr": "12:30", # Required for other calculations, not Zohwa-e-Kubra
+        "Asr": "16:00",
+        "Maghrib": "18:00",
+        "Isha": "19:30",
+        "Imsak": "04:50"
+    }
+    api_times_tomorrow = {} # Not relevant for this test
+    app_config = {} # Not relevant for this test
+
+    with app.app_context():
+        calculated_times, _ = calculate_display_times_from_service(
+            mock_user_settings, api_times_today, api_times_tomorrow, app_config
+        )
+
+    # Assert Zohwa-e-Kubra Start Time: Midpoint of Fajr (05:00) and Sunset (18:00)
+    # Duration = 13 hours (780 minutes). Midpoint = 6.5 hours (390 minutes) after 05:00.
+    # 05:00 + 6h 30m = 11:30
+    assert calculated_times["zohwa_kubra"]["start"] == "11:30"
+
+    # Assert Zohwa-e-Kubra End Time: Midpoint of Sunrise (06:00) and Sunset (18:00)
+    # Duration = 12 hours (720 minutes). Midpoint = 6 hours (360 minutes) after 06:00.
+    # 06:00 + 6h = 12:00
+    assert calculated_times["zohwa_kubra"]["end"] == "12:00"

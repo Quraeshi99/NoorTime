@@ -3,9 +3,12 @@ from project.extensions import limiter
 from flask import jsonify, request, current_app, g
 import datetime
 import json
+from zoneinfo import ZoneInfo
+import zoneinfo
 from flask_smorest import Blueprint, abort
 from webargs import fields
 from webargs.flaskparser import use_args
+from typing import Dict, Any, Optional, Tuple
 
 from .. import db
 from ..models import User, UserSettings
@@ -15,15 +18,20 @@ from ..services.prayer_time_service import (
     calculate_display_times_from_service,
     get_next_prayer_info_from_service,
     get_current_prayer_period_from_service,
-    _get_single_prayer_info
+    get_single_prayer_info
 )
 from ..services.geocoding_service import get_geocoded_location_with_cache, get_autocomplete_suggestions
 from ..utils.auth import jwt_optional, jwt_required, has_permission
 from ..utils.time_utils import get_prayer_key_for_tomorrow
+from prometheus_client import generate_latest
 
 api_bp = Blueprint('API', __name__, url_prefix='/api')
 
-def get_prayer_settings_from_user(user, args):
+@api_bp.route('/metrics')
+def metrics():
+    return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
+
+def get_prayer_settings_from_user(user: Optional[User], args: Dict[str, Any]) -> Tuple[float, float, int, int, int, str, str]:
     """
     Determines the correct prayer time settings (location, method, etc.) based on a hierarchy:
     1. A followed Masjid's settings.
@@ -42,7 +50,7 @@ def get_prayer_settings_from_user(user, args):
 
     # 1. Logged-in user logic
     if user:
-        user_settings = user.settings if user.settings else UserSettings() # Ensure user_settings object exists
+        user_settings = user.settings if user and user.settings else UserSettings() # Ensure user_settings object exists
 
         # Priority 1: Followed Masjid
         default_masjid_follow = user.default_masjid_follow
@@ -72,7 +80,7 @@ def get_prayer_settings_from_user(user, args):
                 req_lon,
                 int(user.default_calculation_method_id or method_id),
                 int(user_settings.asr_juristic_id or asr_id),
-                high_lat_id_to_use,
+                int(user_settings.high_latitude_method_id or high_lat_id),
                 args.get('city', "Custom Location"),
                 "custom_location_with_user_settings"
             )
@@ -113,7 +121,7 @@ def get_prayer_settings_from_user(user, args):
 #@api_bp.response(200, InitialPrayerDataSchema, description="Prayer data retrieved successfully.")
 @api_bp.response(503, MessageSchema, description="Service Unavailable - Could not fetch data from the external prayer time API.")
 @api_bp.response(500, MessageSchema, description="Internal Server Error.")
-def initial_prayer_data(args):
+def initial_prayer_data(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Get all initial data for the prayer times screen.
     This is the main endpoint. It provides personalized data for logged-in users,
@@ -134,8 +142,12 @@ def initial_prayer_data(args):
     announcements = default_masjid_info.announcements if default_masjid_info else []
 
     # --- Fetch and Calculate Prayer Times (Core Logic) ---
-    today_date = datetime.date.today()
-    now_datetime = datetime.datetime.now()
+    # TODO: User timezone should be fetched from user settings in the database.
+    user_timezone_str = user.settings.timezone if user and hasattr(user, 'settings') and user.settings and hasattr(user.settings, 'timezone') else 'UTC'
+    user_tz = zoneinfo.ZoneInfo(user_timezone_str)
+
+    now_datetime = datetime.datetime.now(user_tz)
+    today_date = now_datetime.date()
     tomorrow_date = today_date + datetime.timedelta(days=1)
     day_after_tomorrow_date = today_date + datetime.timedelta(days=2)
 
@@ -154,7 +166,8 @@ def initial_prayer_data(args):
         user_prayer_settings_obj, 
         api_times_today, 
         api_times_tomorrow, 
-        current_app.config
+        current_app.config,
+        calculation_date=today_date
     )
     
     if needs_db_update and user and not is_following_default_masjid:
@@ -170,12 +183,13 @@ def initial_prayer_data(args):
     current_prayer_name = current_period_info.get("name", "ISHA").upper()
     prayer_to_show_for_tomorrow_key = get_prayer_key_for_tomorrow(current_prayer_name, today_date)
 
-    next_day_prayer_display = _get_single_prayer_info(
+    next_day_prayer_display = get_single_prayer_info(
         prayer_to_show_for_tomorrow_key,
         api_times_tomorrow,
         user_prayer_settings_obj,
         api_times_day_after_tomorrow,
-        last_api_times
+        last_api_times,
+        calculation_date=tomorrow_date
     )
     
     if next_day_prayer_display:
@@ -196,7 +210,7 @@ def initial_prayer_data(args):
         "nextDayPrayerDisplay": next_day_prayer_display,
         "userPreferences": {
             "timeFormat": time_format_pref,
-            "calculationMethod": method_key,
+            "calculationMethod": method_id,
             "homeLatitude": lat,
             "homeLongitude": lon,
         },

@@ -32,11 +32,21 @@ class Config:
     # The result backend URL tells Celery where to store the results of tasks.
     CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') or REDIS_URL
 
+    # Cache TTL (Time-To-Live) Configuration
+    REDIS_TTL_DAILY_CACHE = int(os.environ.get('REDIS_TTL_DAILY_CACHE', 3600)) # 1 hour
+    REDIS_TTL_YEARLY_CALENDAR = int(os.environ.get('REDIS_TTL_YEARLY_CALENDAR', 2592000)) # 30 days
+    CACHE_SCHEMA_VERSION = os.environ.get('CACHE_SCHEMA_VERSION', 'v1') # Version for cached data schema
+
     # Prayer Time API Configuration
     PRAYER_API_ADAPTER = os.environ.get('PRAYER_API_ADAPTER') or "AlAdhanAdapter"
     PRAYER_API_BASE_URL = os.environ.get('PRAYER_API_BASE_URL') or "http://api.aladhan.com/v1"
     PRAYER_API_KEY = os.environ.get('PRAYER_API_KEY')
     PRAYER_ZONE_GRID_SIZE = float(os.environ.get("PRAYER_ZONE_GRID_SIZE", 0.2))
+    PRAYER_TIME_DIFF_THRESHOLD_SECONDS = int(os.environ.get('PRAYER_TIME_DIFF_THRESHOLD_SECONDS', 50))
+
+    # Path for the country to calculation method mapping
+    # This path is relative to the 'backend' directory.
+    COUNTRY_METHOD_MAP_PATH = os.environ.get('COUNTRY_METHOD_MAP_PATH', 'project/static/country_method_map.json')
 
     # Geocoding API Configuration
     GEOCODING_PROVIDER = os.environ.get('GEOCODING_PROVIDER', 'LocationIQ') # Can be 'LocationIQ' or 'OpenWeatherMap'
