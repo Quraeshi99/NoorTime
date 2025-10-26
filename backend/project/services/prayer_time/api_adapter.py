@@ -30,7 +30,8 @@ class AlAdhanAdapter(BasePrayerAdapter):
         current_app.logger.debug(f"AlAdhanAdapter: Fetching daily with params: {params}")
 
         try:
-            response = requests.get(endpoint, params=params, timeout=10)
+            timeout_seconds = current_app.config.get("PRAYER_API_TIMEOUT_DAILY", 10)
+            response = requests.get(endpoint, params=params, timeout=timeout_seconds)
             response.raise_for_status()
             data = response.json()
 
@@ -76,7 +77,8 @@ class AlAdhanAdapter(BasePrayerAdapter):
 
         try:
             # Using a longer timeout for a large annual data request.
-            response = requests.get(endpoint, params=params, timeout=30)
+            timeout_seconds = current_app.config.get("PRAYER_API_TIMEOUT_YEARLY", 30)
+            response = requests.get(endpoint, params=params, timeout=timeout_seconds)
             response.raise_for_status()
             data = response.json()
 

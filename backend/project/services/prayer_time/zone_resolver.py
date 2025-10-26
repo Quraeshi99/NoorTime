@@ -5,6 +5,7 @@ import os
 import json
 from flask import current_app
 from .cache_layer import get_yearly_calendar_from_cache
+from .timing_calculator import parse_time_str
 from typing import Dict, Any, Optional, Tuple, List
 
 def get_zone_id_from_coords(latitude: float, longitude: float) -> str:
@@ -111,10 +112,10 @@ def _compare_prayer_times(calendar1_data: List[Dict[str, Any]], calendar2_data: 
             time2_str = day2_timings.get(prayer_name)
 
             if time1_str and time2_str:
-                try:
-                    time1_obj = datetime.datetime.strptime(time1_str.split(' ')[0], "%H:%M").time()
-                    time2_obj = datetime.datetime.strptime(time2_str.split(' ')[0], "%H:%M").time()
-                    
+                time1_obj = parse_time_str(time1_str)
+                time2_obj = parse_time_str(time2_str)
+
+                if time1_obj and time2_obj:
                     dummy_date = datetime.date(2000, 1, 1)
                     dt1 = datetime.datetime.combine(dummy_date, time1_obj)
                     dt2 = datetime.datetime.combine(dummy_date, time2_obj)
@@ -124,9 +125,9 @@ def _compare_prayer_times(calendar1_data: List[Dict[str, Any]], calendar2_data: 
                     if diff_seconds > threshold_seconds:
                         current_app.logger.info(f"Time difference for {prayer_name} on day {day_idx} exceeds {threshold_seconds}s: {diff_seconds}s")
                         return True
-                except ValueError:
-                    current_app.logger.warning(f"Could not parse time string for comparison: {time1_str} or {time2_str}")
-                    continue
+                elif time1_str != time2_str:
+                    # If parsing fails but strings are different, log it.
+                    current_app.logger.warning(f"Could not parse time strings for comparison, but they are different: '{time1_str}' vs '{time2_str}'")
     return False
 
 def get_method_id_for_country(country_code: str) -> int:
