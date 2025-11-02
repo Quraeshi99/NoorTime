@@ -25,6 +25,9 @@ from ..utils.auth import jwt_optional, jwt_required, has_permission
 from ..utils.time_utils import get_prayer_key_for_tomorrow
 from prometheus_client import generate_latest
 
+# Import the new schedule service
+from ..services.schedule_service import get_or_generate_monthly_schedule
+
 api_bp = Blueprint('API', __name__, url_prefix='/api')
 
 @api_bp.route('/metrics')
@@ -199,6 +202,36 @@ def initial_prayer_data(args: Dict[str, Any]) -> Dict[str, Any]:
     gregorian_info = date_info.get('gregorian', {})
     hijri_info = date_info.get('hijri', {})
 
+    # --- New: Check for proactively generated next month's schedule ---
+    next_schedule_url = None
+    # Determine the year and month for the *next* month
+    first_day_of_current_month = today_date.replace(day=1)
+    # Adding 32 days guarantees we land in the next month
+    first_day_of_next_month = first_day_of_current_month + datetime.timedelta(days=32)
+    next_month_year = first_day_of_next_month.year
+    next_month_month = first_day_of_next_month.month
+
+    # Efficiently check if the next month's schedule exists in the cache
+    # The owner is the user or the masjid they follow
+    owner_id = default_masjid_info.id if is_following_default_masjid else user.id
+    if owner_id:
+        schedule_exists = db.session.query(MonthlyScheduleCache.id).filter_by(
+            owner_id=owner_id,
+            year=next_month_year,
+            month=next_month_month
+        ).first() is not None
+
+        if schedule_exists:
+            # Construct the URL for the frontend to call
+            # This is not hardcoded and uses Flask's URL building
+            from flask import url_for
+            next_schedule_url = url_for(
+                'API.get_monthly_schedule', 
+                year=next_month_year, 
+                month=next_month_month, 
+                _external=False # Use a relative URL
+            )
+
     response_data = {
         "currentLocationName": city_name,
         "currentPrayerPeriod": current_period_info,
@@ -218,7 +251,48 @@ def initial_prayer_data(args: Dict[str, Any]) -> Dict[str, Any]:
         # --- New community feature fields ---
         "is_following_default_masjid": is_following_default_masjid,
         "default_masjid_info": default_masjid_info,
-        "announcements": announcements
+        "announcements": announcements,
+        # --- New: URL for proactive client-side caching ---
+        "next_schedule_url": next_schedule_url
     }
     current_app.logger.info(f"Response data: {response_data}")
     return response_data
+
+@api_bp.route('/v1/schedule/monthly', methods=['GET'])
+@jwt_required
+def get_monthly_schedule():
+    """
+    API endpoint to get the pre-calculated, state-based monthly schedule
+    for the currently logged-in user. This is the primary endpoint for the
+    "Schedule-Based" architecture.
+    """
+    user = g.user if hasattr(g, 'user') else None
+    if not user:
+        # This should technically not be reached if @jwt_required works as expected
+        return jsonify({"error": "Authentication required."}), 401
+
+    try:
+        # Get year and month from query params, default to current UTC month
+        now = datetime.datetime.utcnow()
+        year = request.args.get('year', default=now.year, type=int)
+        month = request.args.get('month', default=now.month, type=int)
+
+        # The service function handles all complex logic:
+        # - Determines if user is individual or follower
+        # - Checks for a cached schedule on the server
+        # - Re-uses a Masjid's schedule for followers
+        # - Generates, caches, and returns the schedule if not found
+        schedule_data = get_or_generate_monthly_schedule(
+            user_id=user.id,
+            year=year,
+            month=month
+        )
+
+        if not schedule_data:
+            return jsonify({"error": "Could not generate or retrieve schedule."}), 500
+
+        return jsonify(schedule_data), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error in /v1/schedule/monthly endpoint: {e}", exc_info=True)
+        return jsonify({"error": "An unexpected server error occurred."}), 500

@@ -48,6 +48,18 @@ class Config:
     # This path is relative to the 'backend' directory.
     COUNTRY_METHOD_MAP_PATH = os.environ.get('COUNTRY_METHOD_MAP_PATH', 'project/static/country_method_map.json')
 
+    # Scalable Schedule Generation (Rolling Wave) Configuration
+    # Number of days to spread the schedule generation over.
+    SCHEDULE_GENERATION_DAYS = int(os.environ.get('SCHEDULE_GENERATION_DAYS', 28))
+
+    # User prioritization buckets based on days since last seen.
+    # Stored as a JSON string in env for flexibility.
+    USER_PRIORITY_BUCKETS_DAYS = json.loads(os.environ.get('USER_PRIORITY_BUCKETS_DAYS', '{"P1": 30, "P2": 90, "P3": 365}'))
+
+    # Cron schedule for the daily master scheduler task.
+    MASTER_SCHEDULER_CRON_HOUR = int(os.environ.get('MASTER_SCHEDULER_CRON_HOUR', 1)) # 1 AM UTC
+    MASTER_SCHEDULER_CRON_MINUTE = int(os.environ.get('MASTER_SCHEDULER_CRON_MINUTE', 30)) # 1:30 AM UTC
+
     # Geocoding API Configuration
     GEOCODING_PROVIDER = os.environ.get('GEOCODING_PROVIDER', 'LocationIQ') # Can be 'LocationIQ' or 'OpenWeatherMap'
     OPENWEATHERMAP_API_KEY = os.environ.get('OPENWEATHERMAP_API_KEY')
@@ -69,6 +81,7 @@ class Config:
     DEFAULT_LATITUDE = os.environ.get('DEFAULT_LATITUDE', "19.2183")
     DEFAULT_LONGITUDE = os.environ.get('DEFAULT_LONGITUDE', "72.8493")
     DEFAULT_CALCULATION_METHOD = os.environ.get('DEFAULT_CALCULATION_METHOD', "Karachi")
+    AUTOMATIC_METHOD_ID = 99 # Special ID to trigger automatic method selection based on country
 
     # Calculation Method Choices for Forms/Templates
     CALCULATION_METHOD_CHOICES = [

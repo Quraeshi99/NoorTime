@@ -1,5 +1,6 @@
-from ...helpers.constants import PRAYER_CONFIG_MAP
-from typing import Dict, Any, Optional, List
+from ..helpers.constants import PRAYER_CONFIG_MAP
+from typing import Dict, Any, Optional, List, Tuple
+import datetime
 
 def parse_time_str(time_str: str) -> Optional[datetime.time]:
     if not time_str or time_str.lower() == "n/a": 
@@ -213,6 +214,12 @@ def calculate_display_times_from_service(user_settings: Any, api_times_today: Di
         "start": format_time_obj(zohwa_kubra_start_obj),
         "end": format_time_obj(zohwa_kubra_end_obj)
     }
+
+    sunrise_time_str = api_times_today.get("Sunrise")
+    sunset_time_str = api_times_today.get("Sunset")
+    calculated_times["sunrise"] = {"time": format_time_obj(parse_time_str(sunrise_time_str))}
+    calculated_times["sunset"] = {"time": format_time_obj(parse_time_str(sunset_time_str))}
+
     return calculated_times, needs_db_update
 
 def get_next_prayer_info_from_service(display_times_today: Dict[str, Any], tomorrow_fajr_display_details: Dict[str, Any], now_datetime_obj: datetime.datetime) -> Dict[str, Any]:

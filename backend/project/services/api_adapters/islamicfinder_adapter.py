@@ -76,7 +76,7 @@ class IslamicFinderAdapter:
                     # Add other fields if available and needed
                 }
             else:
-                current_app.logger.warning(f"IslamicFinder: API returned error or no data: {data.get("status", "Unknown")}")
+                current_app.logger.warning(f"IslamicFinder: API returned error or no data: {data.get('status', 'Unknown')}")
                 return None
         except requests.exceptions.Timeout:
             current_app.logger.error("IslamicFinder: Request timed out.")

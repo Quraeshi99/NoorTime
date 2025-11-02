@@ -45,6 +45,15 @@ def get_zone_id_from_admin_levels(admin_levels: Dict[str, Any], level: str = "ad
     else:
         return None # Invalid level or missing admin_3 for admin_3 level
 
+from ..models import PrayerZoneCalendar, ZoneAlias
+from project.extensions import redis_client
+from sqlalchemy.exc import SQLAlchemyError
+from .key_utils import generate_alias_redis_key
+
+# --- Constants for Redis --- 
+# TTL for Redis alias pointers (e.g., 30 days)
+REDIS_ALIAS_TTL = 2592000
+
 def determine_final_zone_id(year: int, latitude: float, longitude: float, admin_levels: Optional[Dict[str, Any]], composite_method_key: str, force_refresh: bool) -> Optional[str]:
     """Determines the most appropriate zone ID to use (Admin2, Admin3, or grid)."""
     if not admin_levels:
@@ -54,26 +63,71 @@ def determine_final_zone_id(year: int, latitude: float, longitude: float, admin_
     admin_2_zone_id = get_zone_id_from_admin_levels(admin_levels, level="admin_2")
     admin_3_zone_id = get_zone_id_from_admin_levels(admin_levels, level="admin_3")
 
+    # If admin_3 is not available, fall back to admin_2 or grid
     if not admin_3_zone_id:
+        return admin_2_zone_id if admin_2_zone_id else get_zone_id_from_coords(latitude, longitude)
+
+    # --- New Logic: Check for permanent alias in DB first --- 
+    # This handles cases where Redis pointer might have expired or been cleared.
+    alias_redis_key = generate_alias_redis_key(admin_3_zone_id, composite_method_key)
+    
+    # 1. Check Redis for a temporary alias pointer
+    redis_alias_target = redis_client.get(alias_redis_key)
+    if redis_alias_target:
+        current_app.logger.info(f"Redis Alias HIT: {admin_3_zone_id} -> {redis_alias_target.decode()}")
+        return redis_alias_target.decode()
+
+    # 2. Check DB for a permanent alias
+    db_alias = ZoneAlias.query.filter_by(source_zone_id=admin_3_zone_id).first()
+    if db_alias:
+        current_app.logger.info(f"DB Alias HIT: {admin_3_zone_id} -> {db_alias.target_zone_id}")
+        # Repopulate Redis for faster access next time
+        redis_client.set(alias_redis_key, db_alias.target_zone_id, ex=REDIS_ALIAS_TTL)
+        return db_alias.target_zone_id
+
+    # --- Original Logic (modified for hash comparison) --- 
+    # If no alias found, proceed with comparison
+    admin_2_calendar = PrayerZoneCalendar.query.filter_by(
+        zone_id=admin_2_zone_id,
+        year=year,
+        calculation_method=composite_method_key
+    ).first()
+
+    admin_3_calendar = PrayerZoneCalendar.query.filter_by(
+        zone_id=admin_3_zone_id,
+        year=year,
+        calculation_method=composite_method_key
+    ).first()
+
+    # If admin_2 calendar is not available, use admin_3 if available
+    if not admin_2_calendar:
+        return admin_3_zone_id if admin_3_calendar else get_zone_id_from_coords(latitude, longitude)
+
+    # If admin_3 calendar is not available, use admin_2
+    if not admin_3_calendar:
         return admin_2_zone_id
 
-    admin_2_calendar = get_yearly_calendar_from_cache(admin_2_zone_id, year, composite_method_key)
-    if not admin_2_calendar:
-        return admin_3_zone_id
-
-    admin_3_calendar = get_yearly_calendar_from_cache(admin_3_zone_id, year, composite_method_key)
-    if not admin_3_calendar:
-        return admin_3_zone_id
-
-    if not _compare_prayer_times(admin_2_calendar, admin_3_calendar, threshold_seconds=current_app.config['PRAYER_TIME_DIFF_THRESHOLD_SECONDS']):
-        current_app.logger.info(f"Admin Level 2 ('{admin_2_zone_id}') is sufficient.")
+    # --- Hash-based Comparison --- 
+    # Compare calendar hashes instead of full data for efficiency
+    if admin_2_calendar.calendar_hash == admin_3_calendar.calendar_hash:
+        current_app.logger.info(f"Hashes match: Admin Level 2 ('{admin_2_zone_id}') is sufficient for '{admin_3_zone_id}'.")
+        # Create a permanent alias in DB
+        try:
+            new_alias = ZoneAlias(source_zone_id=admin_3_zone_id, target_zone_id=admin_2_zone_id)
+            db.session.add(new_alias)
+            db.session.commit()
+            current_app.logger.info(f"Created permanent alias in DB: {admin_3_zone_id} -> {admin_2_zone_id}")
+            # Also set in Redis for immediate use
+            redis_client.set(alias_redis_key, admin_2_zone_id, ex=REDIS_ALIAS_TTL)
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            current_app.logger.error(f"Failed to create ZoneAlias for {admin_3_zone_id} -> {admin_2_zone_id}: {e}", exc_info=True)
         return admin_2_zone_id
     else:
-        current_app.logger.info(f"Admin Level 3 ('{admin_3_zone_id}') is required.")
+        current_app.logger.info(f"Hashes differ: Admin Level 3 ('{admin_3_zone_id}') is required.")
         return admin_3_zone_id
 
-def get_zone_center_coords(zone_id: str) -> Tuple[Optional[float], Optional[float]]:
-    """
+def get_zone_center_coords(zone_id: str) -> Tuple[Optional[float], Optional[float]]:    """
     [Legacy] Calculates the center coordinates for a grid-based zone ID.
     This is only used for the fallback grid system.
     """

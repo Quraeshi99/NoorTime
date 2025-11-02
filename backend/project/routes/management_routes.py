@@ -4,11 +4,14 @@ from flask import jsonify, request, current_app, g
 from flask_smorest import Blueprint, abort
 from webargs import fields
 from webargs.flaskparser import use_args
+from sqlalchemy import text # Import text for raw SQL execution
+import requests # Import requests for external API checks
 
 from .. import db
 from ..models import User, UserSettings, AppSettings, Popup, Permission, RolePermission, UserPermission
 from ..utils.auth import has_permission # Import the new permission decorator
 from ..utils.constants import Roles
+from project.metrics import CACHE_HITS, CACHE_MISSES # Import Prometheus metrics
 # from ..services.notification_service import notification_service
 from ..schemas import MessageSchema # Assuming MessageSchema for success/error messages
 
@@ -263,6 +266,64 @@ def send_notification(args):
     # )
     # return result # Return dict for Smorest
     return {"message": "Notification sending is currently disabled."}
+
+# --- System Health Check ---
+
+@management_bp.route('/system-health', methods=['GET'])
+@has_permission('can_view_system_health')
+@management_bp.response(200, MessageSchema)
+def get_system_health():
+    health_status = {
+        "database": "UNKNOWN",
+        "redis": "UNKNOWN",
+        "external_prayer_api": "UNKNOWN",
+        "celery_workers": "UNKNOWN",
+        "cache_stats": {"hits": "UNKNOWN", "misses": "UNKNOWN"}
+    }
+
+    # Database Check
+    try:
+        db.session.execute(text('SELECT 1'))
+        health_status["database"] = "OK"
+    except Exception as e:
+        health_status["database"] = f"ERROR: {e}"
+        current_app.logger.error(f"Health Check: Database Error: {e}")
+
+    # Redis Check
+    try:
+        redis_client.ping()
+        health_status["redis"] = "OK"
+    except Exception as e:
+        health_status["redis"] = f"ERROR: {e}"
+        current_app.logger.error(f"Health Check: Redis Error: {e}")
+
+    # External Prayer API Check (AlAdhan as example)
+    try:
+        # Use a lightweight endpoint, e.g., a method list or a single day for a known location
+        test_url = f"{current_app.config.get('PRAYER_API_BASE_URL')}/methods"
+        response = requests.get(test_url, timeout=5)
+        response.raise_for_status()
+        health_status["external_prayer_api"] = "OK"
+    except Exception as e:
+        health_status["external_prayer_api"] = f"ERROR: {e}"
+        current_app.logger.error(f"Health Check: External API Error: {e}")
+
+    # Celery Workers Check (Simplified - requires more advanced monitoring for full check)
+    # For a basic check, we can assume if Redis is up, Celery might be able to connect.
+    # A more robust check would involve inspecting Celery's own monitoring tools (e.g., Flower API).
+    health_status["celery_workers"] = "UNKNOWN" # Placeholder for now
+
+    # Cache Stats (from Prometheus metrics)
+    try:
+        # Assuming CACHE_HITS and CACHE_MISSES are Prometheus Counters
+        # This is a simplified way to get current values, actual Prometheus client usage might differ
+        health_status["cache_stats"]["hits"] = CACHE_HITS._value # Accessing internal value, not ideal for production
+        health_status["cache_stats"]["misses"] = CACHE_MISSES._value # Accessing internal value, not ideal for production
+    except Exception as e:
+        health_status["cache_stats"] = f"ERROR: {e}"
+        current_app.logger.error(f"Health Check: Cache Stats Error: {e}")
+
+    return jsonify(health_status)
 
 # --- Permission Management APIs (Super Admin Only) ---
 

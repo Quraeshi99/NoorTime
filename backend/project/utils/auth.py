@@ -5,6 +5,7 @@ from flask import request, jsonify, current_app, g
 import jwt
 from jwt import PyJWKClient
 import time
+from datetime import datetime
 
 from .. import db
 from ..models import User, Permission, UserPermission, RolePermission # Import new models
@@ -42,6 +43,7 @@ def _get_or_create_user_from_jwt(payload):
     """
     Finds a user in the local DB from the JWT payload, or creates one.
     Maps Supabase roles to local application roles.
+    Also updates the user's last_seen_at timestamp.
     """
     supabase_id = payload.get("sub")
     if not supabase_id:
@@ -49,24 +51,33 @@ def _get_or_create_user_from_jwt(payload):
 
     user = User.query.filter_by(supabase_user_id=supabase_id).first()
     if user:
-        return user
+        # Update last_seen_at for existing user
+        user.last_seen_at = datetime.utcnow()
+        # No commit here, will be committed below
     
-    email = payload.get("email")
-    if not email:
-        return None
-
-    user = User.query.filter_by(email=email).first()
-    if user:
-        user.supabase_user_id = supabase_id
     else:
-        supabase_role = payload.get("role")
-        app_role = Roles.SUPER_ADMIN if supabase_role == 'service_role' else Roles.CLIENT
-        user = User(supabase_user_id=supabase_id, email=email, role=app_role)
-        db.session.add(user)
+        email = payload.get("email")
+        if not email:
+            return None
+
+        user = User.query.filter_by(email=email).first()
+        if user:
+            user.supabase_user_id = supabase_id
+            user.last_seen_at = datetime.utcnow()
+        else:
+            supabase_role = payload.get("role")
+            app_role = Roles.SUPER_ADMIN if supabase_role == 'service_role' else Roles.CLIENT
+            user = User(
+                supabase_user_id=supabase_id, 
+                email=email, 
+                role=app_role,
+                last_seen_at=datetime.utcnow() # Set on creation
+            )
+            db.session.add(user)
     
     try:
         db.session.commit()
-        current_app.logger.info(f"Created/linked local user for Supabase ID {supabase_id} with role {user.role}")
+        current_app.logger.info(f"Authenticated and updated last_seen for user {user.id} (Supabase ID {supabase_id})")
         return user
     except Exception as e:
         db.session.rollback()

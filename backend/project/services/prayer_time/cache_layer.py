@@ -6,14 +6,14 @@ from project.extensions import redis_client
 from typing import Dict, Any, Optional, List
 from project.metrics import CACHE_HITS, CACHE_MISSES
 from redis import exceptions as redis_exceptions
+from .key_utils import generate_calendar_redis_key, generate_daily_redis_key
 
 def get_yearly_calendar_from_cache(zone_id: str, year: int, composite_method_key: str) -> Optional[List[Dict[str, Any]]]:
     """
     New caching function that checks Redis first, then the database.
     If found in DB, it caches to Redis for future requests.
     """
-    schema_version = current_app.config['CACHE_SCHEMA_VERSION']
-    redis_key = f"calendar:{schema_version}:{zone_id}:{year}:{composite_method_key}"
+    redis_key = generate_calendar_redis_key(zone_id, year, composite_method_key)
 
     # 1. Check Redis Cache first
     cached_data = _cache_get_json(redis_key)
@@ -45,7 +45,7 @@ def get_yearly_calendar_from_cache(zone_id: str, year: int, composite_method_key
     current_app.logger.info(f"DB Cache MISS for zone '{zone_id}', year {year}.")
     return None
 
-    def _cache_get_json(key: str) -> Optional[Dict[str, Any]]:
+def _cache_get_json(key: str) -> Optional[Dict[str, Any]]:
     """Helper function to safely get and deserialize a JSON object from Redis."""
     try:
         cached_data = redis_client.get(key)
@@ -65,6 +65,5 @@ def _cache_set_json(key: str, value: Any, ttl: int) -> None:
 def cache_daily_prayer_times(final_zone_id: str, today_date_str: str, composite_method_key: str, daily_data: Dict[str, Any]) -> None:
     """Caches the prayer times for a single day to prevent API hammering."""
     if daily_data:
-        schema_version = current_app.config['CACHE_SCHEMA_VERSION']
-        redis_key = f"daily:{schema_version}:{final_zone_id}:{today_date_str}:{composite_method_key}"
+        redis_key = generate_daily_redis_key(final_zone_id, today_date_str, composite_method_key)
         _cache_set_json(redis_key, daily_data, ttl=current_app.config['REDIS_TTL_DAILY_CACHE'])    

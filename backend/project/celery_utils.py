@@ -3,6 +3,7 @@ This module sets up and configures the Celery application instance,
 ensuring it integrates correctly with the Flask application context.
 """
 from celery import Celery
+from celery.schedules import crontab
 
 # We create a Celery instance without a specific broker URL here.
 # The configuration will be loaded from the Flask app config later.
@@ -25,6 +26,19 @@ def init_celery(app):
     celery.conf.update(
         broker_url=app.config['CELERY_BROKER_URL'],
         result_backend=app.config['CELERY_RESULT_BACKEND'],
+        # Add the Celery Beat schedule here
+        beat_schedule={
+            # Name for the scheduled task
+            'run-master-scheduler-daily': {
+                # The task to run (must match the name in @celery.task)
+                'task': 'tasks.master_schedule_generator',
+                # The schedule on which to run the task
+                'schedule': crontab(
+                    hour=app.config['MASTER_SCHEDULER_CRON_HOUR'],
+                    minute=app.config['MASTER_SCHEDULER_CRON_MINUTE']
+                ),
+            },
+        },
     )
 
     # Subclass Celery's Task class to wrap every task execution in a Flask app context.

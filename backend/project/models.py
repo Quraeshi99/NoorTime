@@ -153,6 +153,7 @@ class User(UserMixin, db.Model):
     default_city_name = db.Column(db.String(100), nullable=True)
     default_calculation_method = db.Column(db.String(50), nullable=True) 
     time_format_preference = db.Column(db.String(10), default='12h')
+    last_seen_at = db.Column(db.DateTime, nullable=True, index=True)
 
     # --- Relationships ---
     # One-to-one relationship to the user's personal prayer time settings.
@@ -334,6 +335,13 @@ class Permission(db.Model):
     def __repr__(self):
         return f'<Permission {self.name}>'
 
+# Add default permissions if they don't exist
+@event.listens_for(db.Mapper, 'after_configured')
+def receive_after_configured():
+    if not db.session.query(Permission).filter_by(name='can_view_system_health').first():
+        db.session.add(Permission(name='can_view_system_health', description='Can view system health dashboard'))
+        db.session.commit()
+
 class UserPermission(db.Model):
     __tablename__ = 'user_permission'
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
@@ -383,6 +391,11 @@ class PrayerZoneCalendar(db.Model):
     # This allows storing different prayer times for the same zone based on fiqh/school of thought.
     calculation_method = db.Column(db.String(50), primary_key=True)
 
+    # A SHA-256 hash of the calendar_data JSON string. This acts as a 'digital fingerprint'
+    # to allow for extremely fast, 100% accurate comparisons of calendars without
+    # loading the full data into memory.
+    calendar_hash = db.Column(db.String(64), nullable=True, index=True)
+
     # Version of the schema used for the calendar_data JSON. Used for cache invalidation.
     schema_version = db.Column(db.String(10), nullable=False, default='v1')
 
@@ -422,4 +435,51 @@ class GeocodingCache(db.Model):
     def __repr__(self):
         return f'<GeocodingCache {self.city_name} -> ({self.latitude}, {self.longitude})>'
 
+
+class MonthlyScheduleCache(db.Model):
+    """
+    Caches the final, generated monthly "Director's Script" for a user or a Masjid.
+
+    This is the ultimate cache layer that stores the pre-calculated, state-based
+    schedule that is sent to the client. This prevents re-calculating the complex
+    script on every request and enables the "Don't Recalculate, Re-use" strategy
+    for Masjid followers.
+    """
+    __tablename__ = 'monthly_schedule_cache'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # The owner of this schedule. This is a foreign key to the User table.
+    # If it's an individual user's schedule, it's their user.id.
+    # If it's a Masjid's schedule, it's the Masjid's own user.id.
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+
+    # The year and month for which this schedule is valid.
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+
+    # A version number that gets incremented every time the schedule is regenerated
+    # due to a settings change. This helps clients know if they need to re-sync.
+    version = db.Column(db.Integer, nullable=False, default=1)
+
+    # The full JSON "Director's Script" for the month.
+    # Using db.Text for broad compatibility, but db.JSON is preferred for PostgreSQL.
+    schedule_script = db.Column(db.Text, nullable=False)
+
+    # A SHA-256 hash of the schedule_script. This allows for extremely fast
+    # comparison to check if a newly generated script is different from the stored one.
+    script_hash = db.Column(db.String(64), nullable=False, index=True)
+
+    # Timestamps for tracking.
+    generated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # --- Relationships ---
+    owner = db.relationship('User', backref=db.backref('monthly_schedules', lazy='dynamic', cascade="all, delete-orphan"))
+
+    # --- Constraints ---
+    __table_args__ = (db.UniqueConstraint('owner_id', 'year', 'month', name='uq_owner_year_month'),)
+
+    def __repr__(self):
+        return f'<MonthlyScheduleCache Owner:{self.owner_id} For:{self.year}-{self.month} v{self.version}>'
 

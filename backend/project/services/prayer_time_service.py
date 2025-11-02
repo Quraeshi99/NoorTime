@@ -1,37 +1,13 @@
-        # Implement Redis lock to prevent race conditions (thundering herd problem).
-        # Only the first request for an uncached zone will trigger the background fetch.
-        schema_version = current_app.config['CACHE_SCHEMA_VERSION']
-        lock_key = f"lock:calendar_fetch:{schema_version}:{final_zone_id}:{year}:{composite_method_key}"
-        # Set lock with a 10-minute timeout to prevent permanent locks.
-        if redis_client.set(lock_key, "1", nx=True, ex=600):
-            current_app.logger.info(f"Acquired lock for {lock_key}. Triggering background task.")
-            fetch_and_cache_yearly_calendar_task.delay(
-                zone_id=final_zone_id,
-                year=year,
-                method_id=method_id,
-                asr_juristic_id=asr_juristic_id,
-                high_latitude_method_id=high_latitude_method_id,
-                latitude=latitude,
-                longitude=longitude
-            )
-        else:
-            current_app.logger.info(f"Lock for {lock_key} is already held. Skipping background task trigger.")
-
-        # --- Instant Gratification --- 
-        # Immediately fetch and return just today's prayer times for the user.
-        daily_data = get_daily_prayer_times_from_api(
-            date_obj=date_obj,
-            latitude=latitude,
-            longitude=longitude,
-            method_id=method_id,
-            asr_juristic_id=asr_juristic_id,
-            high_latitude_method_id=high_latitude_method_id
-        )
-        
-        # Cache the single-day result for a short time to prevent API hammering
-        cache_daily_prayer_times(final_zone_id, today_date_str, composite_method_key, daily_data)
-
-        return daily_data
+from typing import Dict, Any, Optional
+import datetime
+import zoneinfo
+from flask import current_app
+from .prayer_time.api_adapter import get_daily_prayer_times_from_api
+from .prayer_time.cache_layer import get_yearly_calendar_from_cache, cache_daily_prayer_times
+from .prayer_time.zone_resolver import determine_final_zone_id, get_method_id_for_country
+from .geocoding_service import get_admin_levels_from_coords
+from ..extensions import redis_client
+from ..models import PrayerZoneCalendar
 
 def _check_and_trigger_grace_period_fetch(final_zone_id: str, calculation_method_key: str, latitude: float, longitude: float) -> None:
     """
@@ -105,8 +81,7 @@ def get_api_prayer_times_for_date_from_service(date_obj: datetime.date, latitude
     # 1. Determine Zone ID
     admin_levels = get_admin_levels_from_coords(latitude, longitude)
     
-    AUTOMATIC_METHOD_ID = 99
-    if method_id == AUTOMATIC_METHOD_ID:
+    if method_id == current_app.config.get('AUTOMATIC_METHOD_ID'):
         country_code = admin_levels.get('country_code', 'XX') if admin_levels else 'XX'
         method_id = get_method_id_for_country(country_code)
 
@@ -119,10 +94,10 @@ def get_api_prayer_times_for_date_from_service(date_obj: datetime.date, latitude
         return None
 
     # 2. Attempt to get the full yearly calendar from cache (Redis or DB)
-    yearly_calendar = get_yearly_calendar_from_cache(final_zone_id, year, composite_method_key)
+    yearly_calendar_data = get_yearly_calendar_from_cache(final_zone_id, year, composite_method_key)
 
-    if yearly_calendar:
-        for day_data in yearly_calendar:
+    if yearly_calendar_data:
+        for day_data in yearly_calendar_data:
             if day_data.get('date', {}).get('gregorian', {}).get('date') == today_date_str:
                 return day_data
         current_app.logger.error(f"Data for {today_date_str} not found in cached calendar for zone {final_zone_id}")
@@ -165,7 +140,3 @@ def get_api_prayer_times_for_date_from_service(date_obj: datetime.date, latitude
         cache_daily_prayer_times(final_zone_id, today_date_str, composite_method_key, daily_data)
 
         return daily_data
-
-
-
-

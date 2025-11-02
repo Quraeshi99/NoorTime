@@ -1,7 +1,9 @@
 # This module will contain all functions related to interacting with the prayer time API.
 from flask import current_app # To access app.logger and app.config
-from .base_adapter import BasePrayerAdapter
+from ..api_adapters.base_adapter import BasePrayerAdapter
 from typing import Dict, Any, Optional, List
+import datetime
+import requests
 
 class AlAdhanAdapter(BasePrayerAdapter):
     """
@@ -39,7 +41,7 @@ class AlAdhanAdapter(BasePrayerAdapter):
                 current_app.logger.info(f"AlAdhanAdapter: Successfully fetched daily timings for {date_str}.")
                 raw_data = data["data"]
                 return {
-                    "date": raw_data.get("date", {}).get("gregorian", {}).get("date"),
+                    "date": raw_data.get("date", {}),
                     "timings": raw_data.get("timings", {})
                 }
             else:
@@ -87,7 +89,7 @@ class AlAdhanAdapter(BasePrayerAdapter):
                 for month_key in sorted(data["data"].keys(), key=int):
                     for day_data in data["data"][month_key]:
                         full_year_data.append({
-                            "date": day_data.get("date", {}).get("gregorian", {}).get("date"),
+                            "date": day_data.get("date", {}),
                             "timings": day_data.get("timings", {})
                         })
                 
