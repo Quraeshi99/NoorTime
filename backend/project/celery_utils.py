@@ -38,6 +38,16 @@ def init_celery(app):
                     minute=app.config['MASTER_SCHEDULER_CRON_MINUTE']
                 ),
             },
+            # Name for the proactive calendar fetcher task
+            'run-proactive-calendar-fetcher-daily': {
+                # The task to run
+                'task': 'tasks.proactive_yearly_calendar_fetcher',
+                # The schedule on which to run the task
+                'schedule': crontab(
+                    hour=app.config['PROACTIVE_FETCHER_CRON_HOUR'],
+                    minute=app.config['PROACTIVE_FETCHER_CRON_MINUTE']
+                ),
+            },
         },
     )
 

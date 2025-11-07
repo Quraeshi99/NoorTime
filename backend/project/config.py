@@ -60,6 +60,10 @@ class Config:
     MASTER_SCHEDULER_CRON_HOUR = int(os.environ.get('MASTER_SCHEDULER_CRON_HOUR', 1)) # 1 AM UTC
     MASTER_SCHEDULER_CRON_MINUTE = int(os.environ.get('MASTER_SCHEDULER_CRON_MINUTE', 30)) # 1:30 AM UTC
 
+    # Cron schedule for the daily proactive calendar fetcher task.
+    PROACTIVE_FETCHER_CRON_HOUR = int(os.environ.get('PROACTIVE_FETCHER_CRON_HOUR', 2)) # 2 AM UTC
+    PROACTIVE_FETCHER_CRON_MINUTE = int(os.environ.get('PROACTIVE_FETCHER_CRON_MINUTE', 30)) # 2:30 AM UTC
+
     # Geocoding API Configuration
     GEOCODING_PROVIDER = os.environ.get('GEOCODING_PROVIDER', 'LocationIQ') # Can be 'LocationIQ' or 'OpenWeatherMap'
     OPENWEATHERMAP_API_KEY = os.environ.get('OPENWEATHERMAP_API_KEY')

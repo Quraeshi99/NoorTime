@@ -141,6 +141,224 @@ def master_schedule_generator():
     for user in target_users:
         generate_schedule_for_single_user.delay(user.id, year_to_generate, month_to_generate)
     
-    success_message = f"Dispatched schedule generation tasks for {len(target_users)} users."
-    current_app.logger.info(f"[CELERY BEAT] {success_message}")
-    return success_message
+        success_message = f"Dispatched schedule generation tasks for {len(target_users)} users."
+    
+        current_app.logger.info(f"[CELERY BEAT] {success_message}")
+    
+        return success_message
+    
+    
+    
+    
+    
+    # --- Proactive Yearly Calendar Fetching (Zone-Based Rolling Wave) ---
+    
+    
+    
+    @celery.task(name='tasks.proactive_yearly_calendar_fetcher')
+    
+    def proactive_yearly_calendar_fetcher():
+    
+        """
+    
+        This is the master Celery Beat task for the 'Zone-Based Rolling Wave'.
+    
+        It runs daily and proactively fetches the *next year's* raw prayer time calendars
+    
+        from the external API. The load is distributed evenly across the entire year by
+    
+        assigning each zone to a specific day of the year based on its hash.
+    
+        """
+    
+        from .models import PrayerZoneCalendar
+    
+        from . import db
+    
+        import datetime
+    
+        import hashlib
+    
+    
+    
+        current_app.logger.info("[CELERY BEAT] Proactive Yearly Calendar Fetcher starting.")
+    
+    
+    
+        # --- Determine Target Date and Modulo ---
+    
+        now = datetime.datetime.utcnow()
+    
+        year_to_fetch = now.year + 1
+    
+        
+    
+        # Use day of the year (1-366 for leap years) for the modulo calculation
+    
+        day_of_year = now.timetuple().tm_yday
+    
+        days_in_year = 366 if (now.year % 4 == 0 and now.year % 100 != 0) or (now.year % 400 == 0) else 365
+    
+        modulo_value = day_of_year % days_in_year
+    
+    
+    
+        current_app.logger.info(f"Processing zone bucket {modulo_value} for year {year_to_fetch}.")
+    
+    
+    
+        # --- Query for All Unique Zones ---
+    
+        # We get all distinct combinations of zone_id and calculation_method.
+    
+        # This represents every unique calendar type we have in our system.
+    
+        all_zones = db.session.query(
+    
+            PrayerZoneCalendar.zone_id, 
+    
+            PrayerZoneCalendar.calculation_method
+    
+        ).distinct().all()
+    
+    
+    
+        if not all_zones:
+    
+            current_app.logger.info("No existing zones found in PrayerZoneCalendar table. Task complete.")
+    
+            return "No zones found to process."
+    
+    
+    
+        # --- Filter Zones for Today's Bucket and Dispatch Tasks ---
+    
+        zones_to_process_count = 0
+    
+        for zone_id, calculation_method in all_zones:
+    
+            # Create a consistent hash for the zone identifier
+    
+            # Use a combination of zone_id and method to ensure uniqueness
+    
+            unique_zone_key = f"{zone_id}-{calculation_method}"
+    
+            
+    
+            # Use hashlib for a stable integer hash
+    
+            hash_int = int(hashlib.sha256(unique_zone_key.encode('utf-8')).hexdigest(), 16)
+    
+    
+    
+            if (hash_int % days_in_year) == modulo_value:
+    
+                # This zone belongs to today's bucket.
+    
+                # Check if the calendar for next year already exists.
+    
+                calendar_exists = db.session.query(PrayerZoneCalendar.zone_id).filter(
+    
+                    PrayerZoneCalendar.zone_id == zone_id,
+    
+                    PrayerZoneCalendar.calculation_method == calculation_method,
+    
+                    PrayerZoneCalendar.year == year_to_fetch
+    
+                ).first()
+    
+    
+    
+                if not calendar_exists:
+    
+                    current_app.logger.info(f"Zone '{unique_zone_key}' is in today's bucket. Triggering fetch for {year_to_fetch}.")
+    
+                    
+    
+                    # We need lat/lon and method details to trigger the fetch task.
+    
+                    # We can get this from any existing calendar for that zone.
+    
+                    # This assumes that lat/lon for a zone_id is constant.
+    
+                    existing_calendar = db.session.query(PrayerZoneCalendar).filter(
+    
+                        PrayerZoneCalendar.zone_id == zone_id,
+    
+                        PrayerZoneCalendar.calculation_method == calculation_method
+    
+                    ).first()
+    
+    
+    
+                    if existing_calendar and existing_calendar.calendar_data:
+    
+                        try:
+    
+                            # Extract required info from the existing calendar data
+    
+                            # This is a bit fragile; depends on the structure of calendar_data
+    
+                            first_day_data = existing_calendar.calendar_data[0]
+    
+                            meta = first_day_data.get('meta', {})
+    
+                            latitude = meta.get('latitude')
+    
+                            longitude = meta.get('longitude')
+    
+                            
+    
+                            method_id, asr_juristic_id, high_latitude_method_id = map(int, calculation_method.split('-'))
+    
+    
+    
+                            if latitude is not None and longitude is not None:
+    
+                                fetch_and_cache_yearly_calendar_task.delay(
+    
+                                    zone_id=zone_id,
+    
+                                    year=year_to_fetch,
+    
+                                    method_id=method_id,
+    
+                                    asr_juristic_id=asr_juristic_id,
+    
+                                    high_latitude_method_id=high_latitude_method_id,
+    
+                                    latitude=latitude,
+    
+                                    longitude=longitude
+    
+                                )
+    
+                                zones_to_process_count += 1
+    
+                            else:
+    
+                                current_app.logger.warning(f"Could not find lat/lon in existing calendar for zone '{unique_zone_key}'.")
+    
+    
+    
+                        except (ValueError, IndexError, KeyError) as e:
+    
+                            current_app.logger.error(f"Error processing existing calendar for zone '{unique_zone_key}': {e}")
+    
+                    else:
+    
+                        current_app.logger.warning(f"Could not find an existing calendar with data for zone '{unique_zone_key}' to get lat/lon.")
+    
+                else:
+    
+                    current_app.logger.debug(f"Calendar for zone '{unique_zone_key}' for year {year_to_fetch} already exists. Skipping.")
+    
+    
+    
+        success_message = f"Dispatched calendar fetch tasks for {zones_to_process_count} zones."
+    
+        current_app.logger.info(f"[CELERY BEAT] {success_message}")
+    
+        return success_message
+    
+    

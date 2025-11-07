@@ -158,11 +158,13 @@ def jwt_optional(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         g.user = None
+        g.device_id = request.headers.get('X-Device-ID') # Get device ID for guests
         g.user_permissions = set() # Initialize empty set for guest
         auth_header = request.headers.get("authorization")
         if auth_header:
-            success, _ = _validate_token_and_get_user() # Attempt to validate, result sets g.user and g.user_permissions or not
-            if not success: # If validation failed, clear g.user and g.user_permissions
+            success, _ = _validate_token_and_get_user() # Attempt to validate
+            # If validation succeeds, g.user is set. If it fails, we proceed as a guest.
+            if not success:
                 g.user = None
                 g.user_permissions = set()
         return f(*args, **kwargs)
